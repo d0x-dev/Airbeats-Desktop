@@ -8,36 +8,38 @@
 
 <img src="https://raw.githubusercontent.com/d0x-dev/Airbeats-Desktop/refs/heads/main/uploads/airbeats_desktop_preview.png" alt="AirBeats Preview" width="100%"/>
 
-### 🚀 Advanced YouTube Music Client for Windows
+## 🌍 Get Started
 
-**Experience Music Like Never Before on your Desktop**
-
-[![Latest Release](https://img.shields.io/github/v/release/d0x-dev/Airbeats-Desktop?style=for-the-badge&logo=github&color=0D1117&labelColor=161B22)](https://github.com/d0x-dev/Airbeats-Desktop/releases)
-[![License](https://img.shields.io/github/license/d0x-dev/Airbeats-Desktop?style=for-the-badge&logo=gnu&color=2B3137&labelColor=161B22)](https://github.com/d0x-dev/Airbeats-Desktop/blob/main/LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Windows-0078D6.svg?style=for-the-badge&logo=windows&logoColor=white&labelColor=161B22)](https://github.com/d0x-dev/Airbeats-Desktop)
-[![GitHub Stars](https://img.shields.io/github/stars/d0x-dev/Airbeats-Desktop?style=for-the-badge&logo=github&labelColor=161B22)](https://github.com/d0x-dev/Airbeats-Desktop/stargazers)
-[![GitHub Forks](https://img.shields.io/github/forks/d0x-dev/Airbeats-Desktop?style=for-the-badge&logo=github&labelColor=161B22)](https://github.com/d0x-dev/Airbeats-Desktop/network)
-
-</div>
+| Platform | Download |
+|----------|----------|
+| 🌐 **Website** | [Official Website](http://darkxvenom.com) |
+| 🪟 **Windows** | [Download .exe (Latest Release)](https://github.com/d0x-dev/Airbeats-Desktop/releases/latest) |
+| 🍎 **macOS** | [Download .dmg (Latest Release)](https://github.com/d0x-dev/Airbeats-Desktop/releases/latest) |
+| 🐧 **Linux** | [Download .AppImage or .deb](https://github.com/d0x-dev/Airbeats-Desktop/releases/latest) |
 
 ---
 
-## ✨ Features
+## 🚀 Installation Guide
 
-- 🎵 **Seamless YouTube Music Integration** - Full access to your favorite tracks
-- 🎨 **Sleek UI** - Modern, elegant, and intuitive UX with frosted glass effects
-- 🎯 **Advanced Playback Controls** - Fine-tune your music experience
-- 🔐 **Secure & Privacy-Focused** - Your data stays yours
-- ⚡ **Lightning Fast** - Optimized performance and smooth animations
-- 🎧 **Listen Together** - Realtime synchronised listening sessions with friends
-- 🌙 **Native Desktop App** - Portable or Installable formats
+### 🐧 Linux (Recommended)
+Airbeats is officially available on the Canonical Snap Store for all major Linux distributions! To install, simply run this single command in your terminal:
 
----
+```bash
+sudo snap install airbeats
+```
+*Alternatively, you can download the `.AppImage` or `.deb` files from the [Releases](https://github.com/d0x-dev/Airbeats-Desktop/releases/latest) page.*
 
-## 🌐 Get Started
+### 🪟 Windows
+1. Download the latest `Airbeats-setup.exe` from the [Releases](https://github.com/d0x-dev/Airbeats-Desktop/releases/latest) page.
+2. Double-click the installer and follow the prompt.
+3. Airbeats will automatically install and add a shortcut to your Desktop!
 
-| Link | OS |
-|------|----|
+### 🍎 macOS
+1. Download the latest `Airbeats-mac.dmg` from the [Releases](https://github.com/d0x-dev/Airbeats-Desktop/releases/latest) page.
+2. Double-click the `.dmg` file to open it.
+3. Drag the Airbeats icon into your **Applications** folder.
+
+------|----|
 | 🌍 [Official Website](http://darkxvenom.com) | Learn more |
 | 🪟 [Download for Windows (Setup)](https://github.com/d0x-dev/Airbeats-Desktop/releases/latest/download/Airbeats-v6.1.0-setup.exe) | Windows 10/11 |
 | 🪟 [Download for Windows (Portable)](https://github.com/d0x-dev/Airbeats-Desktop/releases/latest/download/Airbeats-v6.1.0-portable.exe) | Windows 10/11 |
