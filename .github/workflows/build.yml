@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - 'v*'
+      - '*'
 
 jobs:
   build:
@@ -74,10 +74,11 @@ jobs:
 
     - name: Publish to GitHub Releases
       uses: softprops/action-gh-release@v2
-      if: startsWith(github.ref, 'refs/tags/v')
+      if: startsWith(github.ref, 'refs/tags/')
       with:
         files: |
           electron-app/dist/*.exe
           electron-app/dist/*.dmg
           electron-app/dist/*.AppImage
           electron-app/dist/*.deb
+
