@@ -2921,14 +2921,23 @@ async function checkForUpdates(manual = false, isScreen = false) {
                 };
                 
                 downloadBtn.onclick = () => {
-                    const setupAsset = data.assets.find(a => a.name.toLowerCase().includes('setup.exe'));
-                    if (setupAsset) {
-                        window.electronAPI.openExternal(setupAsset.browser_download_url);
-                    } else {
-                        window.electronAPI.openExternal(data.html_url);
-                    }
-                    modal.style.display = 'none';
-                };
+                      let targetAsset;
+                      const ua = navigator.userAgent.toLowerCase();
+                      if (ua.includes('win')) {
+                          targetAsset = data.assets.find(a => a.name.toLowerCase().includes('setup.exe'));
+                      } else if (ua.includes('mac')) {
+                          targetAsset = data.assets.find(a => a.name.toLowerCase().endsWith('.dmg'));
+                      } else if (ua.includes('linux')) {
+                          targetAsset = data.assets.find(a => a.name.toLowerCase().endsWith('.appimage'));
+                      }
+                      
+                      if (targetAsset) {
+                          window.electronAPI.openExternal(targetAsset.browser_download_url);
+                      } else {
+                          window.electronAPI.openExternal(data.html_url);
+                      }
+                      modal.style.display = 'none';
+                  };
             }
         } else {
             if (manual) {
@@ -3346,5 +3355,6 @@ document.getElementById('cm-share').addEventListener('click', () => {
         });
     }
 });
+
 
 
