@@ -78,7 +78,7 @@ Ready to build AirBeats Desktop yourself? Follow our comprehensive guide below.
 
 ### 🚀 Build Steps
 
-`ash
+```bash
 # 1. Clone the repository
 git clone https://github.com/d0x-dev/Airbeats-Desktop.git
 
@@ -87,7 +87,7 @@ cd Airbeats-Desktop
 
 # 3. Create a python virtual environment
 python -m venv venv
-venv\Scripts\activate
+venv\Scriptsctivate
 pip install -r requirements.txt
 
 # 4. Navigate to the electron wrapper
@@ -98,7 +98,7 @@ npm install
 
 # 6. Build the Executable
 npm run build
-`
+```
 
 ---
 
