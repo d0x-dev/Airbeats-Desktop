@@ -3261,11 +3261,27 @@ document.getElementById('cm-play-now').addEventListener('click', () => {
     }
 });
 
-document.getElementById('cm-download').addEventListener('click', () => {
+document.getElementById('cm-download').addEventListener('click', async () => {
     ctxMenu.style.display = 'none';
     if (!ctxActiveData || (ctxActiveData.type !== 'song' && ctxActiveData.type !== 'queue')) return;
-    window.open('/api/play_stream2?id=' + ctxActiveData.id, '_blank');
-    if(window.showToast) window.showToast("Downloading " + ctxActiveData.title);
+    
+    if(window.showToast) window.showToast("Downloading " + ctxActiveData.title + "...");
+    try {
+        const downloadUrl = `/api/stream?id=${ctxActiveData.id}`;
+        const res = await fetch(downloadUrl);
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = `${ctxActiveData.title} - Airbeats.m4a`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+    } catch (e) {
+        console.error("Download failed", e);
+        if(window.showToast) window.showToast("Download failed");
+    }
 });
 
 document.getElementById('cm-subscribe').addEventListener('click', () => {
