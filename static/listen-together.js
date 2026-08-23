@@ -1,4 +1,4 @@
-const API_BASE = "https://listentogether.fdar606.workers.dev";
+const API_BASE = "https://listentogether.airbeats.app";
 
 window.ListenTogether = {
     session: null,
