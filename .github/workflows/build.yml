@@ -50,12 +50,12 @@ jobs:
     - name: Build Electron app (Windows)
       if: matrix.os == 'windows-latest'
       working-directory: ./electron-app
-      run: npx electron-builder --win -c.publish=never
+      run: npx electron-builder --win --publish never
 
     - name: Build Electron app (macOS)
       if: matrix.os == 'macos-latest'
       working-directory: ./electron-app
-      run: npx electron-builder --mac -c.publish=never
+      run: npx electron-builder --mac --publish never
 
     - name: Install Snapcraft (Linux)
       if: matrix.os == 'ubuntu-latest'
@@ -64,7 +64,7 @@ jobs:
     - name: Build Electron app (Linux)
       if: matrix.os == 'ubuntu-latest'
       working-directory: ./electron-app
-      run: npx electron-builder --linux -c.publish=never
+      run: npx electron-builder --linux --publish never
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
@@ -87,6 +87,7 @@ jobs:
           electron-app/dist/*.AppImage
           electron-app/dist/*.deb
           electron-app/dist/*.snap
+
 
 
 
