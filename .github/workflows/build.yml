@@ -9,6 +9,8 @@ on:
 jobs:
   build:
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
     strategy:
       matrix:
         os: [windows-latest, macos-latest, ubuntu-latest]
@@ -65,6 +67,16 @@ jobs:
       with:
         name: airbeats-${{ matrix.os }}
         path: |
+          electron-app/dist/*.exe
+          electron-app/dist/*.dmg
+          electron-app/dist/*.AppImage
+          electron-app/dist/*.deb
+
+    - name: Publish to GitHub Releases
+      uses: softprops/action-gh-release@v2
+      if: startsWith(github.ref, 'refs/tags/v')
+      with:
+        files: |
           electron-app/dist/*.exe
           electron-app/dist/*.dmg
           electron-app/dist/*.AppImage
