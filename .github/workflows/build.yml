@@ -36,7 +36,9 @@ jobs:
 
     - name: Build Python backend (Unix)
       if: matrix.os != 'windows-latest'
-      run: pyinstaller --name server --onedir --noconsole --add-data "templates:templates" --add-data "static:static" --collect-data ytmusicapi -y app.py
+      run: |
+        pyinstaller --name server --onedir --noconsole --add-data "templates:templates" --add-data "static:static" --collect-data ytmusicapi -y app.py
+        mv dist/server/server dist/server/server.exe
 
     - name: Set up Node.js
       uses: actions/setup-node@v4
@@ -87,6 +89,7 @@ jobs:
           electron-app/dist/*.AppImage
           electron-app/dist/*.deb
           electron-app/dist/*.snap
+
 
 
 
