@@ -38,10 +38,10 @@
                                "createStartMenuShortcut":  true,
                                "shortcutName":  "Airbeats",
                                "license":  "license.txt",
-                               "artifactName":  "Airbeats-setup.${ext}"
+                               "artifactName":  "Airbeats-v${version}-setup.${ext}"
                            },
                   "portable":  {
-                                   "artifactName":  "Airbeats-Portable.${ext}"
+                                   "artifactName":  "Airbeats-v${version}-portable.${ext}"
                                },
                   "mac":  {
                               "target":  [
@@ -50,7 +50,7 @@
                               "icon":  "icon.png"
                           },
                   "dmg":  {
-                              "artifactName":  "Airbeats-macOS.${ext}",
+                              "artifactName":  "Airbeats-v${version}-mac.${ext}",
                               "title":  "Install Airbeats"
                           },
                   "linux":  {
@@ -59,7 +59,13 @@
                                                "deb"
                                            ],
                                 "icon":  "icon.png"
-                            }
+                            },
+                  "appImage":  {
+                                   "artifactName":  "Airbeats-v${version}-linux.${ext}"
+                               },
+                  "deb":  {
+                              "artifactName":  "Airbeats-v${version}-linux.${ext}"
+                          }
               },
     "keywords":  [
 
