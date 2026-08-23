@@ -71,6 +71,7 @@ jobs:
           electron-app/dist/*.dmg
           electron-app/dist/*.AppImage
           electron-app/dist/*.deb
+          electron-app/dist/*.snap
 
     - name: Publish to GitHub Releases
       uses: softprops/action-gh-release@v2
@@ -81,4 +82,6 @@ jobs:
           electron-app/dist/*.dmg
           electron-app/dist/*.AppImage
           electron-app/dist/*.deb
+          electron-app/dist/*.snap
+
 
