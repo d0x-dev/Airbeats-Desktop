@@ -3061,3 +3061,149 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 
+// ==========================================
+// CONTEXT MENU LOGIC
+// ==========================================
+const contextMenuHtml = \
+<div id="custom-context-menu" class="custom-context-menu" style="display: none;">
+    <div class="context-menu-item" id="cm-add-playlist">
+        <i class="fas fa-folder-plus"></i> Add to playlist
+    </div>
+    <div class="context-menu-item" id="cm-play-next">
+        <i class="fas fa-step-forward"></i> Play next
+    </div>
+    <div class="context-menu-item" id="cm-add-queue">
+        <i class="fas fa-list"></i> Add to queue
+    </div>
+    <div class="context-menu-item" id="cm-download">
+        <i class="fas fa-download"></i> Download
+    </div>
+    <div class="context-divider"></div>
+    <div class="context-menu-item" id="cm-copy-link">
+        <i class="fas fa-link"></i> Copy link
+    </div>
+    <div class="context-menu-item" id="cm-share">
+        <i class="fas fa-share-alt"></i> Share
+    </div>
+</div>
+\;
+document.body.insertAdjacentHTML('beforeend', contextMenuHtml);
+
+const ctxMenu = document.getElementById('custom-context-menu');
+let ctxActiveSong = null;
+
+document.addEventListener('contextmenu', function(e) {
+    const target = e.target.closest('.track-row, .card, .np-info');
+    if (!target) {
+        ctxMenu.style.display = 'none';
+        return;
+    }
+    
+    let songId = null;
+    const onclickStr = target.getAttribute('onclick');
+    if (onclickStr && onclickStr.includes('playSingleTrack')) {
+        const match = onclickStr.match(/'([^']+)'/);
+        if (match) songId = match[1];
+    } else if (target.classList.contains('np-info')) {
+        songId = window.getCurrentTrack()?.id;
+    }
+
+    if (!songId) {
+        ctxMenu.style.display = 'none';
+        return;
+    }
+    
+    const song = window.allTracks[songId];
+    if (!song) {
+        ctxMenu.style.display = 'none';
+        return;
+    }
+    
+    e.preventDefault();
+    ctxActiveSong = song;
+    
+    // Check if in playlist
+    const playlists = getPlaylists();
+    const isAdded = playlists.some(pl => pl.songs.includes(songId));
+    const plItem = document.getElementById('cm-add-playlist');
+    plItem.innerHTML = isAdded ? '<i class="fas fa-folder-minus"></i> Remove from playlist' : '<i class="fas fa-folder-plus"></i> Add to playlist';
+
+    ctxMenu.style.display = 'flex';
+    
+    // Ensure it doesn't overflow
+    let x = e.pageX;
+    let y = e.pageY;
+    if (x + ctxMenu.offsetWidth > window.innerWidth) x = window.innerWidth - ctxMenu.offsetWidth - 10;
+    if (y + ctxMenu.offsetHeight > window.innerHeight) y = window.innerHeight - ctxMenu.offsetHeight - 10;
+    
+    ctxMenu.style.left = x + 'px';
+    ctxMenu.style.top = y + 'px';
+});
+
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('#custom-context-menu')) {
+        ctxMenu.style.display = 'none';
+    }
+});
+
+document.getElementById('cm-add-playlist').addEventListener('click', (e) => {
+    ctxMenu.style.display = 'none';
+    if (ctxActiveSong) window.togglePlaylistModal(e, ctxActiveSong.id);
+});
+
+document.getElementById('cm-play-next').addEventListener('click', () => {
+    ctxMenu.style.display = 'none';
+    if (!ctxActiveSong) return;
+    if (window.currentQueue && window.currentQueue.length > 0) {
+        window.currentQueue.splice(window.currentIndex + 1, 0, ctxActiveSong);
+        window.updateQueueUI();
+        showToast("Added to play next");
+    } else {
+        window.playSingleTrack(ctxActiveSong.id);
+    }
+});
+
+document.getElementById('cm-add-queue').addEventListener('click', () => {
+    ctxMenu.style.display = 'none';
+    if (!ctxActiveSong) return;
+    if (window.currentQueue && window.currentQueue.length > 0) {
+        window.currentQueue.push(ctxActiveSong);
+        window.updateQueueUI();
+        showToast("Added to queue");
+    } else {
+        window.playSingleTrack(ctxActiveSong.id);
+    }
+});
+
+document.getElementById('cm-download').addEventListener('click', () => {
+    ctxMenu.style.display = 'none';
+    if (!ctxActiveSong) return;
+    window.open('/api/play_stream2?id=' + ctxActiveSong.id, '_blank');
+    showToast("Downloading " + ctxActiveSong.title);
+});
+
+document.getElementById('cm-copy-link').addEventListener('click', () => {
+    ctxMenu.style.display = 'none';
+    if (!ctxActiveSong) return;
+    const link = "https://play.airbeats.app/song?id=" + ctxActiveSong.id;
+    navigator.clipboard.writeText(link).then(() => {
+        showToast("Link copied to clipboard");
+    });
+});
+
+document.getElementById('cm-share').addEventListener('click', () => {
+    ctxMenu.style.display = 'none';
+    if (!ctxActiveSong) return;
+    const link = "https://play.airbeats.app/song?id=" + ctxActiveSong.id;
+    if (navigator.share) {
+        navigator.share({
+            title: ctxActiveSong.title,
+            text: 'Listen to ' + ctxActiveSong.title + ' on Airbeats!',
+            url: link
+        }).catch(console.error);
+    } else {
+        navigator.clipboard.writeText(link).then(() => {
+            showToast("Link copied to clipboard");
+        });
+    }
+});

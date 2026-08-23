@@ -2351,3 +2351,46 @@ body.animated-waveform.is-playing .wave-bar:nth-child(13n) { animation-delay: -0
     box-sizing: border-box;
 }
 
+/* Context Menu */
+.custom-context-menu {
+    position: fixed;
+    background: rgba(28, 28, 28, 0.95);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    padding: 8px 0;
+    min-width: 220px;
+    z-index: 99999;
+    color: #fff;
+    font-size: 14px;
+    display: none;
+    flex-direction: column;
+    animation: fadeInContext 0.15s ease-out;
+}
+.custom-context-menu .context-menu-item {
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.custom-context-menu .context-menu-item:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+.custom-context-menu .context-menu-item i {
+    width: 16px;
+    text-align: center;
+    color: #a0a0a0;
+}
+.custom-context-menu .context-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.1);
+    margin: 6px 0;
+}
+@keyframes fadeInContext {
+    from { opacity: 0; transform: translateY(-5px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
