@@ -2877,7 +2877,7 @@ async function checkForUpdates(manual = false, isScreen = false) {
             }
         }
         
-        const response = await fetch('https://api.github.com/repos/d0x-dev/AirBeats/releases/latest');
+        const response = await fetch('https://api.github.com/repos/d0x-dev/Airbeats-Desktop/releases/latest');
         if (!response.ok) throw new Error('Failed to fetch latest release');
         
         const data = await response.json();
