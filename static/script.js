@@ -1,4 +1,4 @@
-window.addEventListener('error', function(e) { if (e.target.tagName === 'IMG') { if (e.target.getAttribute('data-fallback-applied')) return; e.target.setAttribute('data-fallback-applied', 'true'); e.target.src = 'https://via.placeholder.com/150x150/1c1a1a/c6e355?text=Music'; } }, true);
+﻿window.addEventListener('error', function(e) { if (e.target.tagName === 'IMG') { if (e.target.getAttribute('data-fallback-applied')) return; e.target.setAttribute('data-fallback-applied', 'true'); e.target.src = 'https://via.placeholder.com/150x150/1c1a1a/c6e355?text=Music'; } }, true);
 
 
 window.getClickableArtistsHtml = function(song) {
@@ -2499,6 +2499,17 @@ window.downloadCurrentSong = async function() {
         if (btn) btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
         
         const downloadUrl = `/api/stream?id=${track.id}`;
+        const filename = `${track.title} - ${track.subtitle || 'Airbeats'}.m4a`;
+        
+        if (window.electronDL && window.electronDL.downloadFile) {
+            window.electronDL.downloadFile(window.location.origin + downloadUrl, filename);
+            setTimeout(() => {
+                if (btn) btn.innerHTML = '<i class="fas fa-download"></i>';
+                if(window.showToast) window.showToast("Download started...");
+            }, 500);
+            return;
+        }
+
         const res = await fetch(downloadUrl);
         const blob = await res.blob();
         const url = window.URL.createObjectURL(blob);
@@ -3268,6 +3279,13 @@ document.getElementById('cm-download').addEventListener('click', async () => {
     if(window.showToast) window.showToast("Downloading " + ctxActiveData.title + "...");
     try {
         const downloadUrl = `/api/stream?id=${ctxActiveData.id}`;
+        const filename = `${ctxActiveData.title} - Airbeats.m4a`;
+        
+        if (window.electronDL && window.electronDL.downloadFile) {
+            window.electronDL.downloadFile(window.location.origin + downloadUrl, filename);
+            return;
+        }
+
         const res = await fetch(downloadUrl);
         const blob = await res.blob();
         const url = window.URL.createObjectURL(blob);
@@ -3328,3 +3346,5 @@ document.getElementById('cm-share').addEventListener('click', () => {
         });
     }
 });
+
+
