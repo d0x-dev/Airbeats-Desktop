@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Island</title>
+    <link rel="stylesheet" href="dynamic-island.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div id="island-container" class="island hidden">
+        <!-- Minimized State (Tiny Pill) -->
+        <div id="island-min" class="island-state">
+            <img id="min-art" src="" alt="Art">
+            <div class="eq-animation">
+                <span></span><span></span><span></span><span></span>
+            </div>
+        </div>
+
+        <!-- Expanded State (Full Player) -->
+        <div id="island-expanded" class="island-state">
+            <div class="expanded-top">
+                <img id="exp-art" src="" alt="Art">
+                <div class="track-info">
+                    <div id="exp-title"></div>
+                    <div id="exp-artist"></div>
+                </div>
+                <div class="eq-animation active">
+                    <span></span><span></span><span></span><span></span>
+                </div>
+            </div>
+            
+            <div class="expanded-mid">
+                <div id="time-current">0:00</div>
+                <div class="progress-bar-bg">
+                    <div id="progress-bar-fill"></div>
+                </div>
+                <div id="time-total">0:00</div>
+            </div>
+            
+            <div class="expanded-bottom">
+                <button class="control-btn" id="btn-heart"><i class="far fa-heart"></i></button>
+                <div class="playback-controls">
+                    <button class="control-btn" id="btn-prev"><i class="fas fa-step-backward"></i></button>
+                    <button class="control-btn play-btn" id="btn-play"><i class="fas fa-pause"></i></button>
+                    <button class="control-btn" id="btn-next"><i class="fas fa-step-forward"></i></button>
+                </div>
+                <button class="control-btn" id="btn-repeat"><i class="fas fa-redo"></i></button>
+            </div>
+        </div>
+    </div>
+    <script src="dynamic-island.js"></script>
+</body>
+</html>

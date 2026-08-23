@@ -1,0 +1,17 @@
+END USER LICENSE AGREEMENT AND PRIVACY POLICY
+
+By clicking "I Agree" or by installing this software, you agree to the following terms and conditions:
+
+1. ACCEPTANCE OF TERMS
+You agree to use this software in accordance with all applicable laws and regulations.
+
+2. PRIVACY POLICY
+This application caches local data (such as web cache and session information) on your computer solely for the purpose of running the application efficiently. 
+- We do not track, collect, or transmit any personally identifiable information.
+- All web communications made by this application are directly between your computer and the requested services.
+- The cache data remains locally on your device and is not shared with any third party.
+
+3. DISCLAIMER OF WARRANTIES
+The software is provided "AS IS", without warranty of any kind. 
+
+By continuing with the installation, you acknowledge that you have read and understood this Privacy Policy and agree to its terms.
