@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script>
+        if (window.innerWidth <= 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+            window.location.href = '/mobile';
+        }
+    </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Airbeats</title>
+    <meta name="description" content="Airbeats is a free online music streaming platform developed by darkboy (d0x-dev). Stream high-quality audio, discover new artists, view live lyrics, and enjoy a premium UI ad-free.">
+    
+    <meta name="author" content="darkboy (d0x-dev)">
+    <meta name="robots" content="index, follow">
+    <meta name="language" content="English">
+    <meta name="revisit-after" content="1 days">
+    <meta name="theme-color" content="#1db954">
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://airbeats.xyz/">
+    <meta property="og:title" content="Airbeats - Free Online Music Streaming">
+    <meta property="og:description" content="Airbeats is a free online music streaming platform by darkboy. Stream high-quality audio, discover new artists, view live lyrics, and enjoy a premium UI ad-free.">
+    <meta property="og:image" content="https://raw.githubusercontent.com/drkvenom786/Airbeats/137e3935198c25bfbd5eef1a050002ed52fa84ff/icon.png">
+    <meta property="og:site_name" content="Airbeats">
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:url" content="https://airbeats.xyz/">
+    <meta name="twitter:title" content="Airbeats - Free Online Music Streaming">
+    <meta name="twitter:description" content="Airbeats is a free online music streaming platform by darkboy. Stream high-quality audio, discover new artists, view live lyrics, and enjoy a premium UI ad-free.">
+    <meta name="twitter:image" content="https://raw.githubusercontent.com/drkvenom786/Airbeats/137e3935198c25bfbd5eef1a050002ed52fa84ff/icon.png">
+
+    <!-- Canonical URL -->
+    <link rel="canonical" href="https://airbeats.xyz/">
+
+    <!-- Apple Touch Icon & PWA tags -->
+    <link rel="apple-touch-icon" href="https://raw.githubusercontent.com/drkvenom786/Airbeats/137e3935198c25bfbd5eef1a050002ed52fa84ff/icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Airbeats">
+
+    <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/drkvenom786/Airbeats/137e3935198c25bfbd5eef1a050002ed52fa84ff/icon.png">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ range(1, 999999) | random }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        if (localStorage.getItem('theme') === 'dark') {
+            document.documentElement.setAttribute('data-theme', 'dark');
+        }
+    </script>
+
+<style>
+/* ==========================================
+   MODAL STYLES
+   ========================================== */
+.modal-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(5px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+.modal-overlay.active {
+    opacity: 1;
+    pointer-events: all;
+}
+.modal-content {
+    background: var(--card-bg, #ffffff);
+    width: 90%;
+    max-width: 400px;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    transform: translateY(20px);
+    transition: transform 0.3s ease;
+}
+.modal-overlay.active .modal-content {
+    transform: translateY(0);
+}
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+.modal-title {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+.modal-close {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 1.2rem;
+    cursor: pointer;
+}
+.modal-close:hover {
+    color: var(--text-primary);
+}
+.modal-body {
+    max-height: 300px;
+    overflow-y: auto;
+    margin-bottom: 20px;
+}
+.playlist-item {
+    display: flex;
+    align-items: center;
+    padding: 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.playlist-item:hover {
+    background: var(--search-bg);
+}
+.playlist-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 4px;
+    background: var(--primary-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #000;
+    margin-right: 15px;
+}
+.playlist-info h4 {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 1rem;
+}
+.playlist-info p {
+    margin: 4px 0 0;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+}
+.create-playlist-section {
+    display: flex;
+    gap: 10px;
+    border-top: 1px solid var(--border-color, rgba(255,255,255,0.1));
+    padding-top: 20px;
+}
+.create-playlist-input {
+    flex: 1;
+    background: var(--search-bg);
+    border: 1px solid transparent;
+    border-radius: 8px;
+    padding: 10px 15px;
+    color: var(--text-primary);
+    outline: none;
+}
+.create-playlist-input:focus {
+    border-color: var(--primary-color);
+}
+.create-playlist-btn {
+    background: var(--primary-color);
+    color: #000;
+    border: none;
+    border-radius: 8px;
+    padding: 0 20px;
+    font-weight: 600;
+    cursor: pointer;
+}
+</style>
+    <script>
+        if (localStorage.getItem('theme') === 'dark') {
+            document.documentElement.setAttribute('data-theme', 'dark');
+        }
+    </script>
+</head>
+<body>
+    <div class="app-window">
+        <!-- LEFT SIDEBAR -->
+        <nav class="sidebar">
+            <div class="mac-controls">
+                <span class="mac-dot red" onclick="if(window.electronAPI) { window.electronAPI.closeApp(); }" style="cursor: pointer;" title="Close App"></span>
+                <span class="mac-dot yellow" onclick="if(window.electronAPI) { window.electronAPI.minimizeApp(); }" style="cursor: pointer;" title="Minimize App"></span>
+                <span class="mac-dot green" onclick="if(window.electronAPI) { window.electronAPI.toggleFullscreen(); } else { if(!document.fullscreenElement) document.documentElement.requestFullscreen().catch(e=>console.log(e)); else document.exitFullscreen(); }" style="cursor: pointer;" title="Toggle Fullscreen"></span>
+            </div>
+            
+            <div id="sidebar-main-menu">
+                <div class="nav-section">Library</div>
+                <ul class="nav-links">
+                    <li><a href="#search" class="nav-item active" id="nav-search">Browse</a></li>
+                    <li><a href="#home" class="nav-item" id="nav-home">Songs</a></li>
+                    <li><a href="#albums" class="nav-item" id="nav-albums">Albums</a></li>
+                    <li><a href="#artists" class="nav-item" id="nav-artists">Artists</a></li>
+                </ul>
+
+                <div class="nav-section">My music</div>
+                <ul class="nav-links">
+                    <li><a href="#history" class="nav-item" id="nav-history">Recently Played</a></li>
+                    <li><a href="#favorites" class="nav-item" id="nav-favorites">Favorite Songs</a></li>
+                    <li><a href="#playlists" class="nav-item" id="nav-playlists">Playlists</a></li>
+                    <li><a href="#cached" class="nav-item" id="nav-cached">Cached Songs</a></li>
+                </ul>
+
+            </div>
+            
+            <div id="sidebar-settings-menu" style="display: none;">
+                <div class="nav-section">
+                    <a href="#home" style="color: var(--text-secondary); text-decoration: none; font-size: 14px; margin-bottom: 20px; display: inline-block;">
+                        <i class="fas fa-arrow-left"></i> Back
+                    </a>
+                </div>
+                <div class="nav-section">Account</div>
+                <ul class="nav-links">
+                    <li><a href="#settings/profile" class="nav-item" id="nav-settings-profile">Profile & Badges</a></li>
+                </ul>
+                <div class="nav-section">Settings</div>
+                <ul class="nav-links">
+                    <li><a href="#settings/appearance" class="nav-item" id="nav-settings-appearance">Appearance</a></li>
+                    <li><a href="#settings/about" class="nav-item" id="nav-settings-about">About</a></li>
+                    <li><a href="#settings/updates" class="nav-item" id="nav-settings-updates">Updates</a></li>
+                </ul>
+            </div>
+        </nav>
+
+        <!-- APP RIGHT AREA -->
+        <div class="app-right">
+            <!-- TOP BAR (FULL WIDTH OF APP RIGHT) -->
+            <header class="top-bar">
+                <!-- (Breadcrumb is inside main content) -->
+                
+                <div class="search-box" style="position: relative;">
+                    <i class="fas fa-search search-icon"></i>
+                    <input type="text" id="globalSearch" placeholder="Search..." autocomplete="off">
+                    <div id="searchSuggestions" class="search-suggestions" style="display:none;"></div>
+                </div>
+
+                <div class="top-links">
+                    <a href="#new-releases">New Releases</a>
+                    <a href="#">New Feed</a>
+                    <a href="javascript:void(0)" onclick="window.playMadeForYouShuffle()">Shuffle Play</a>
+                </div>
+                
+                <div class="user-profile">
+                    <a href="#stats" style="color: inherit; text-decoration: none; margin-right: 10px;" title="Leaderboard & Stats">
+                        <i class="fas fa-trophy stats-nav-icon"></i>
+                    </a>
+                    <a href="#settings/appearance" style="color: inherit; text-decoration: none;"><i class="fas fa-cog"></i></a>
+                    <i class="far fa-bell"></i>
+                    <img src="https://ui-avatars.com/api/?name=User&background=ddd&color=333" alt="User">
+                </div>
+            </header>
+
+            <!-- SPLIT VIEW -->
+            <div class="content-split">
+                <!-- MAIN CONTENT -->
+                <div class="main-content">
+                    <div class="scroll-container">
+                        <div id="ptr-indicator"><i class="fas fa-spinner"></i></div>
+                        <div class="loading" id="globalLoading" style="display: none;">
+                            <div class="lottie-spinner" style="width: 60px; height: 60px; margin: 0 auto;"></div>
+                        </div>
+                        <div id="router-view" class="router-view">
+                            <!-- Dynamic Content -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- RIGHT PANEL -->
+                <div class="right-panel">
+                    <div class="now-playing-large">
+                        <div class="np-header">
+                            <h3>Now Playing</h3>
+                        </div>
+                        <div class="np-image-container">
+                            <img id="rightPanelImage" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" class="skeleton" alt="Now Playing">
+                        </div>
+                        <div class="np-info">
+                            <div class="np-title-row">
+                                <div>
+                                    <div id="rightPanelTitle" class="np-title">No song</div>
+                                    <div id="rightPanelArtist" class="np-artist">Artist</div>
+                                </div>
+                                <div style="display: flex; gap: 16px; align-items: center; justify-content: flex-end;">
+                                    <i class="far fa-heart" id="likeBtn" style="cursor:pointer; font-size: 18px; color: var(--text-secondary);"></i>
+                                    <i class="fas fa-folder-plus" id="playlistBtn" style="cursor:pointer; font-size: 18px; color: var(--text-secondary);" title="Add to Playlist"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="queue-section" id="queuePanel">
+                        <div id="queueList" class="queue-list"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ANDROID STYLE BOTTOM NAV (Mobile Only) -->
+    <div class="mobile-bottom-nav" id="mobileBottomNav" style="display: none;">
+        <a href="#search" class="mobile-nav-item active" id="mob-nav-search">
+            <i class="fas fa-compass"></i>
+            <span>Browse</span>
+        </a>
+        <a href="#home" class="mobile-nav-item" id="mob-nav-home">
+            <i class="fas fa-music"></i>
+            <span>Songs</span>
+        </a>
+        <a href="javascript:void(0)" class="mobile-nav-item" onclick="focusMobileSearch()" id="mob-nav-search-btn">
+            <i class="fas fa-search"></i>
+            <span>Search</span>
+        </a>
+        <a href="#library" class="mobile-nav-item" id="mob-nav-library">
+            <i class="fas fa-swatchbook"></i>
+            <span>Library</span>
+        </a>
+    </div>
+
+    <!-- FLOATING PLAYER -->
+    <div class="floating-player-wrapper">
+        <div class="floating-player" id="playerContainer">
+            <div class="fp-left">
+                <img id="playerImage" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" class="skeleton" alt="Cover">
+                <div class="fp-info">
+                    <div id="playerTitle" class="fp-title">No song</div>
+                    <div id="playerArtist" class="fp-artist">Artist</div>
+                </div>
+            </div>
+            
+            <div class="fp-center">
+                <div class="fp-controls">
+                    <button class="icon-btn fp-btn" id="prevBtn"><i class="fas fa-step-backward"></i></button>
+                    <button class="fp-play-btn" id="playPauseBtn"><i class="fas fa-play"></i></button>
+                    <button class="icon-btn fp-btn" id="nextBtn"><i class="fas fa-step-forward"></i></button>
+                </div>
+                <div class="fp-progress-container" id="progressBarContainer">
+                    <div class="waveform-wrapper" id="waveformWrapper">
+                        <div class="waveform-gray" id="waveformGray"></div>
+                        <div class="waveform-active" id="waveformActive"></div>
+                    </div>
+                </div>
+                <div class="fp-time"><span id="currentTime">0:00</span></div>
+            </div>
+
+            <div class="fp-right">
+                <button class="icon-btn" id="shuffleBtn" onclick="window.toggleShuffle()" title="Shuffle"><i class="fas fa-random"></i></button>
+                <button class="icon-btn" id="repeatBtn" onclick="window.toggleRepeat()" title="Repeat"><i class="fas fa-redo"></i></button>
+                <button class="icon-btn" id="downloadBtn" onclick="window.downloadCurrentSong()" title="Download Song"><i class="fas fa-download"></i></button>
+                <button class="icon-btn" id="lyricsBtn" onclick="window.toggleLyrics()" title="Lyrics"><i class="fas fa-microphone-alt"></i></button>
+                <button class="icon-btn" onclick="window.openListenTogetherModal()" title="Listen Together"><i class="fas fa-users" style="color: #1DB954;"></i></button>
+                <button class="icon-btn" id="muteBtn" onclick="window.toggleMute()" title="Mute/Unmute"><i class="fas fa-volume-up"></i></button>
+            </div>
+        </div>
+    </div>
+    <audio id="audioElement"></audio>
+
+    <!-- PLAYLIST MODAL -->
+    <div class="modal-overlay" id="playlistModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">Add to Playlist</div>
+                <button class="modal-close" onclick="window.closePlaylistModal()"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body" id="playlistModalBody">
+                <!-- Playlists injected here -->
+            </div>
+            <div class="create-playlist-section">
+                <input type="text" id="newPlaylistInput" class="create-playlist-input" placeholder="New Playlist Name" onkeypress="if(event.key === 'Enter') window.createAndAddToPlaylist()">
+                <button class="create-playlist-btn" onclick="window.createAndAddToPlaylist()">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                for(let registration of registrations) {
+                    registration.unregister();
+                }
+            });
+        }
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
+    <script src="{{ url_for('static', filename='script.js') }}?v={{ range(1, 999999) | random }}"></script>
+    <script src="{{ url_for('static', filename='listen-together.js') }}?v={{ range(1, 999999) | random }}"></script>
+
+    <!-- Lyrics Overlay -->
+    <div id="lyricsOverlay" class="lyrics-overlay" style="display: none;">
+        <div class="lyrics-content-wrapper">
+            
+            <div class="lyrics-left-panel">
+                <img id="lyricsLeftCover" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="Album Cover">
+                <div id="lyricsLeftTitle">Song Title</div>
+                <div id="lyricsLeftArtist">Artist Name</div>
+                
+                <div class="fp-progress-container lyrics-waveform" id="lyricsProgressBarContainer">
+                    <div class="waveform-wrapper" id="lyricsWaveformWrapper">
+                        <div class="waveform-gray" id="lyricsWaveformGray"></div>
+                        <div class="waveform-active" id="lyricsWaveformActive"></div>
+                    </div>
+                </div>
+                
+                <div class="lyrics-left-controls">
+                    <button class="lyrics-ctrl-btn" onclick="document.getElementById('prevBtn').click()"><i class="fas fa-step-backward"></i></button>
+                    <button class="lyrics-ctrl-btn play-pause" id="lyricsLeftPlayBtn" onclick="document.getElementById('playPauseBtn').click()"><i class="fas fa-pause"></i></button>
+                    <button class="lyrics-ctrl-btn" onclick="document.getElementById('nextBtn').click()"><i class="fas fa-step-forward"></i></button>
+                </div>
+            </div>
+
+            <div class="lyrics-right-panel">
+                <div class="lyrics-header">
+                    <h2 id="lyricsTitle">Song Title</h2>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="lyrics-close-btn" id="lyricsRefreshBtn" onclick="window.forceRefreshLyrics()" title="Refresh Lyrics">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                        <button class="lyrics-close-btn" onclick="window.closeLyrics()" title="Close Lyrics">
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                    </div>
+                </div>
+                <div id="lyricsError" class="lyrics-error" style="display: none;"></div>
+                <div id="lyricsContent" class="lyrics-container"></div>
+            </div>
+            
+        </div>
+    </div>
+
+    <!-- Update Modal -->
+    <div id="update-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 10000; align-items: center; justify-content: center; backdrop-filter: blur(5px);">
+        <div style="background: var(--bg-surface); padding: 30px; border-radius: 12px; max-width: 400px; width: 90%; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1);">
+            <div style="font-size: 48px; margin-bottom: 15px; color: var(--accent);">🚀</div>
+            <h2 style="margin: 0 0 10px 0; font-size: 24px; color: var(--text-primary);">Update Available</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 25px; line-height: 1.5;">A new version of AirBeats (<span id="update-version-name" style="color: #fff; font-weight: bold;"></span>) is available!</p>
+            <div style="display: flex; gap: 10px; justify-content: center;">
+                <button id="btn-update-cancel" style="padding: 10px 20px; background: rgba(255,255,255,0.1); color: var(--text-primary); border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-family: inherit; flex: 1;">Cancel</button>
+                <button id="btn-update-download" style="padding: 10px 20px; background: var(--accent); color: #000; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-family: inherit; flex: 1;">Download</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='lyrics.js') }}?v={{ range(1, 999999) | random }}"></script>
+    <script src="{{ url_for('static', filename='stats.js') }}?v={{ range(1, 999999) | random }}"></script>
+</body>
+</html>
+
+
