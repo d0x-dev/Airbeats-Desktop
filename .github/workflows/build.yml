@@ -1,0 +1,71 @@
+name: Build Airbeats
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: $\{\{ matrix.os \}\}
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.13'
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+
+    - name: Build Python backend (Windows)
+      if: matrix.os == 'windows-latest'
+      run: pyinstaller --name server --onedir --noconsole --add-data "templates;templates" --add-data "static;static" --collect-data ytmusicapi -y app.py
+
+    - name: Build Python backend (Unix)
+      if: matrix.os != 'windows-latest'
+      run: pyinstaller --name server --onedir --noconsole --add-data "templates:templates" --add-data "static:static" --collect-data ytmusicapi -y app.py
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install Node dependencies
+      working-directory: ./electron-app
+      run: npm install
+
+    - name: Build Electron app (Windows)
+      if: matrix.os == 'windows-latest'
+      working-directory: ./electron-app
+      run: npx electron-builder --win
+
+    - name: Build Electron app (macOS)
+      if: matrix.os == 'macos-latest'
+      working-directory: ./electron-app
+      run: npx electron-builder --mac
+
+    - name: Build Electron app (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      working-directory: ./electron-app
+      run: npx electron-builder --linux
+
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: airbeats-$\{\{ matrix.os \}\}
+        path: |
+          electron-app/dist/*.exe
+          electron-app/dist/*.dmg
+          electron-app/dist/*.AppImage
+          electron-app/dist/*.deb

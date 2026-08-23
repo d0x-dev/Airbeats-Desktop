@@ -1,50 +1,74 @@
 {
-  "name": "airbeats",
-  "version": "6.0.0",
-  "description": "",
-  "main": "main.js",
-  "scripts": {
-    "start": "electron .",
-    "build": "electron-builder --win"
-  },
-  "build": {
-    "appId": "com.airbeats.standalone",
-    "productName": "Airbeats",
-    "publish": null,
-    "directories": {
-      "buildResources": "build"
-    },
-    "extraResources": [
-      {
-        "from": "../dist/server",
-        "to": "server",
-        "filter": ["**/*"]
-      }
-    ],
-    "win": {
-      "target": ["nsis", "portable"],
-      "icon": "icon.png"
-    },
-    "nsis": {
-      "oneClick": false,
-      "perMachine": true,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": "always",
-      "createStartMenuShortcut": true,
-      "shortcutName": "Airbeats",
-      "license": "license.txt",
-      "artifactName": "Airbeats-setup.${ext}"
-    },
-    "portable": {
-      "artifactName": "Airbeats-Portable.${ext}"
-    }
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "devDependencies": {
-    "electron": "^43.0.0",
-    "electron-builder": "^26.15.3"
-  }
+    "name":  "airbeats",
+    "version":  "6.0.0",
+    "description":  "",
+    "main":  "main.js",
+    "scripts":  {
+                    "start":  "electron .",
+                    "build":  "electron-builder --win"
+                },
+    "build":  {
+                  "appId":  "com.airbeats.standalone",
+                  "productName":  "Airbeats",
+                  "publish":  null,
+                  "directories":  {
+                                      "buildResources":  "build"
+                                  },
+                  "extraResources":  [
+                                         {
+                                             "from":  "../dist/server",
+                                             "to":  "server",
+                                             "filter":  [
+                                                            "**/*"
+                                                        ]
+                                         }
+                                     ],
+                  "win":  {
+                              "target":  [
+                                             "nsis",
+                                             "portable"
+                                         ],
+                              "icon":  "icon.png"
+                          },
+                  "nsis":  {
+                               "oneClick":  false,
+                               "perMachine":  true,
+                               "allowToChangeInstallationDirectory":  true,
+                               "createDesktopShortcut":  "always",
+                               "createStartMenuShortcut":  true,
+                               "shortcutName":  "Airbeats",
+                               "license":  "license.txt",
+                               "artifactName":  "Airbeats-setup.${ext}"
+                           },
+                  "portable":  {
+                                   "artifactName":  "Airbeats-Portable.${ext}"
+                               },
+                  "mac":  {
+                              "target":  [
+                                             "dmg"
+                                         ],
+                              "icon":  "icon.png"
+                          },
+                  "dmg":  {
+                              "artifactName":  "Airbeats-macOS.${ext}",
+                              "title":  "Install Airbeats"
+                          },
+                  "linux":  {
+                                "target":  [
+                                               "AppImage",
+                                               "deb"
+                                           ],
+                                "icon":  "icon.png"
+                            }
+              },
+    "keywords":  [
+
+                 ],
+    "author":  "",
+    "license":  "ISC",
+    "type":  "commonjs",
+    "devDependencies":  {
+                            "electron":  "^43.0.0",
+                            "electron-builder":  "^26.15.3"
+                        }
 }
