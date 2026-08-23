@@ -3066,18 +3066,23 @@ document.addEventListener('DOMContentLoaded', () => {
 // ==========================================
 const contextMenuHtml = `
 <div id="custom-context-menu" class="custom-context-menu" style="display: none;">
-    <div class="context-menu-item" id="cm-add-playlist">
+    <div class="context-menu-item cm-song-only" id="cm-add-playlist">
         <i class="fas fa-folder-plus"></i> Add to playlist
     </div>
-    <div class="context-menu-item" id="cm-play-next">
+    <div class="context-menu-item cm-song-only" id="cm-play-next">
         <i class="fas fa-step-forward"></i> Play next
     </div>
-    <div class="context-menu-item" id="cm-add-queue">
+    <div class="context-menu-item cm-song-only" id="cm-add-queue">
         <i class="fas fa-list"></i> Add to queue
     </div>
-    <div class="context-menu-item" id="cm-download">
+    <div class="context-menu-item cm-song-only" id="cm-download">
         <i class="fas fa-download"></i> Download
     </div>
+    
+    <div class="context-menu-item cm-artist-only" id="cm-subscribe" style="display: none;">
+        <i class="fas fa-user-plus"></i> Subscribe
+    </div>
+
     <div class="context-divider"></div>
     <div class="context-menu-item" id="cm-copy-link">
         <i class="fas fa-link"></i> Copy link
@@ -3090,47 +3095,76 @@ const contextMenuHtml = `
 document.body.insertAdjacentHTML('beforeend', contextMenuHtml);
 
 const ctxMenu = document.getElementById('custom-context-menu');
-let ctxActiveSong = null;
+let ctxActiveData = null; // { type: 'song'|'artist', id: ..., title: ... }
 
 document.addEventListener('contextmenu', function(e) {
-    const target = e.target.closest('.track-row, .card, .album-card, .recent-row, .np-info');
+    const target = e.target.closest('.track-row, .card, .album-card, .recent-row, .np-info, .artist-card, .clickable-artist');
     if (!target) {
         ctxMenu.style.display = 'none';
         return;
     }
     
-    let songId = null;
+    let type = null;
+    let objId = null;
+    let objTitle = null;
+
     const onclickStr = target.getAttribute('onclick');
     if (onclickStr && onclickStr.includes('playSingleTrack')) {
         const match = onclickStr.match(/'([^']+)'/);
-        if (match) songId = match[1];
+        if (match) {
+            type = 'song';
+            objId = match[1];
+        }
     } else if (target.classList.contains('np-info')) {
-        songId = window.getCurrentTrack()?.id;
+        const tr = window.getCurrentTrack();
+        if (tr) {
+            type = 'song';
+            objId = tr.id;
+        }
+    } else if (onclickStr && onclickStr.includes('#artist/')) {
+        const match = onclickStr.match(/#artist\/([^']+)'/);
+        if (match) {
+            type = 'artist';
+            objId = match[1];
+            objTitle = target.innerText || target.textContent || 'Artist';
+        }
     }
 
-    if (!songId) {
+    if (!objId || !type) {
         ctxMenu.style.display = 'none';
         return;
     }
     
-    const song = window.allTracks[songId];
-    if (!song) {
-        ctxMenu.style.display = 'none';
-        return;
+    if (type === 'song') {
+        const song = window.allTracks[objId];
+        if (!song) {
+            ctxMenu.style.display = 'none';
+            return;
+        }
+        objTitle = song.title;
     }
     
     e.preventDefault();
-    ctxActiveSong = song;
+    ctxActiveData = { type, id: objId, title: objTitle };
     
-    // Check if in playlist
-    const playlists = getPlaylists();
-    const isAdded = playlists.some(pl => pl.songs.includes(songId));
-    const plItem = document.getElementById('cm-add-playlist');
-    plItem.innerHTML = isAdded ? '<i class="fas fa-folder-minus"></i> Remove from playlist' : '<i class="fas fa-folder-plus"></i> Add to playlist';
+    // Toggle visibility of options
+    document.querySelectorAll('.cm-song-only').forEach(el => el.style.display = type === 'song' ? 'flex' : 'none');
+    document.querySelectorAll('.cm-artist-only').forEach(el => el.style.display = type === 'artist' ? 'flex' : 'none');
+
+    if (type === 'song') {
+        const playlists = typeof getPlaylists === 'function' ? getPlaylists() : [];
+        const isAdded = playlists.some(pl => pl.songs.includes(objId));
+        const plItem = document.getElementById('cm-add-playlist');
+        plItem.innerHTML = isAdded ? '<i class="fas fa-folder-minus"></i> Remove from playlist' : '<i class="fas fa-folder-plus"></i> Add to playlist';
+    } else if (type === 'artist') {
+        const subbed = JSON.parse(localStorage.getItem('subscribedArtists') || '[]');
+        const isSubbed = subbed.some(a => a.id === objId);
+        const subItem = document.getElementById('cm-subscribe');
+        subItem.innerHTML = isSubbed ? '<i class="fas fa-user-minus"></i> Unsubscribe' : '<i class="fas fa-user-plus"></i> Subscribe';
+    }
 
     ctxMenu.style.display = 'flex';
     
-    // Ensure it doesn't overflow
     let x = e.pageX;
     let y = e.pageY;
     if (x + ctxMenu.offsetWidth > window.innerWidth) x = window.innerWidth - ctxMenu.offsetWidth - 10;
@@ -3148,62 +3182,83 @@ document.addEventListener('click', function(e) {
 
 document.getElementById('cm-add-playlist').addEventListener('click', (e) => {
     ctxMenu.style.display = 'none';
-    if (ctxActiveSong) window.togglePlaylistModal(e, ctxActiveSong.id);
+    if (ctxActiveData && ctxActiveData.type === 'song') window.togglePlaylistModal(e, ctxActiveData.id);
 });
 
 document.getElementById('cm-play-next').addEventListener('click', () => {
     ctxMenu.style.display = 'none';
-    if (!ctxActiveSong) return;
+    if (!ctxActiveData || ctxActiveData.type !== 'song') return;
+    const song = window.allTracks[ctxActiveData.id];
+    if (!song) return;
     if (window.currentQueue && window.currentQueue.length > 0) {
-        window.currentQueue.splice(window.currentIndex + 1, 0, ctxActiveSong);
+        window.currentQueue.splice(window.currentIndex + 1, 0, song);
         window.updateQueueUI();
-        showToast("Added to play next");
+        if(window.showToast) window.showToast("Added to play next");
     } else {
-        window.playSingleTrack(ctxActiveSong.id);
+        window.playSingleTrack(song.id);
     }
 });
 
 document.getElementById('cm-add-queue').addEventListener('click', () => {
     ctxMenu.style.display = 'none';
-    if (!ctxActiveSong) return;
+    if (!ctxActiveData || ctxActiveData.type !== 'song') return;
+    const song = window.allTracks[ctxActiveData.id];
+    if (!song) return;
     if (window.currentQueue && window.currentQueue.length > 0) {
-        window.currentQueue.push(ctxActiveSong);
+        window.currentQueue.push(song);
         window.updateQueueUI();
-        showToast("Added to queue");
+        if(window.showToast) window.showToast("Added to queue");
     } else {
-        window.playSingleTrack(ctxActiveSong.id);
+        window.playSingleTrack(song.id);
     }
 });
 
 document.getElementById('cm-download').addEventListener('click', () => {
     ctxMenu.style.display = 'none';
-    if (!ctxActiveSong) return;
-    window.open('/api/play_stream2?id=' + ctxActiveSong.id, '_blank');
-    showToast("Downloading " + ctxActiveSong.title);
+    if (!ctxActiveData || ctxActiveData.type !== 'song') return;
+    window.open('/api/play_stream2?id=' + ctxActiveData.id, '_blank');
+    if(window.showToast) window.showToast("Downloading " + ctxActiveData.title);
+});
+
+document.getElementById('cm-subscribe').addEventListener('click', () => {
+    ctxMenu.style.display = 'none';
+    if (!ctxActiveData || ctxActiveData.type !== 'artist') return;
+    
+    let subbed = JSON.parse(localStorage.getItem('subscribedArtists') || '[]');
+    const isSubbed = subbed.some(a => a.id === ctxActiveData.id);
+    if (isSubbed) {
+        subbed = subbed.filter(a => a.id !== ctxActiveData.id);
+        if(window.showToast) window.showToast("Unsubscribed from " + ctxActiveData.title);
+    } else {
+        subbed.push({ id: ctxActiveData.id, name: ctxActiveData.title, image: '' }); // Image can't easily be extracted here without DOM scraping, but it'll sync
+        if(window.showToast) window.showToast("Subscribed to " + ctxActiveData.title);
+    }
+    localStorage.setItem('subscribedArtists', JSON.stringify(subbed));
+    if (window.renderSubscribedArtists && location.hash.includes('artists')) window.renderSubscribedArtists();
 });
 
 document.getElementById('cm-copy-link').addEventListener('click', () => {
     ctxMenu.style.display = 'none';
-    if (!ctxActiveSong) return;
-    const link = "https://play.airbeats.app/song?id=" + ctxActiveSong.id;
+    if (!ctxActiveData) return;
+    const link = "https://play.airbeats.app/" + ctxActiveData.type + "?id=" + ctxActiveData.id;
     navigator.clipboard.writeText(link).then(() => {
-        showToast("Link copied to clipboard");
+        if(window.showToast) window.showToast("Link copied to clipboard");
     });
 });
 
 document.getElementById('cm-share').addEventListener('click', () => {
     ctxMenu.style.display = 'none';
-    if (!ctxActiveSong) return;
-    const link = "https://play.airbeats.app/song?id=" + ctxActiveSong.id;
+    if (!ctxActiveData) return;
+    const link = "https://play.airbeats.app/" + ctxActiveData.type + "?id=" + ctxActiveData.id;
     if (navigator.share) {
         navigator.share({
-            title: ctxActiveSong.title,
-            text: 'Listen to ' + ctxActiveSong.title + ' on Airbeats!',
+            title: ctxActiveData.title,
+            text: 'Check out ' + ctxActiveData.title + ' on Airbeats!',
             url: link
         }).catch(console.error);
     } else {
         navigator.clipboard.writeText(link).then(() => {
-            showToast("Link copied to clipboard");
+            if(window.showToast) window.showToast("Link copied to clipboard");
         });
     }
 });
