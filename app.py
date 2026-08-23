@@ -6,8 +6,18 @@ import math
 import random
 import uuid
 
-import sys
 import os
+import sys
+
+# Load .env if it exists (for local development and GitHub Actions secrets)
+env_file = os.path.join(os.path.dirname(__file__), '.env')
+if os.path.exists(env_file):
+    with open(env_file, 'r', encoding='utf-8') as f:
+        for line in f:
+            if '=' in line and not line.strip().startswith('#'):
+                k, v = line.strip().split('=', 1)
+                os.environ[k.strip()] = v.strip()
+
 
 if getattr(sys, 'frozen', False):
     template_folder = os.path.join(sys._MEIPASS, 'templates')
@@ -71,11 +81,11 @@ def shuffle_queue():
 # Connects to the same database as the Android app (database.ispro.in)
 # Zero database credentials or heavy business logic are exposed to the client.
 
-STATS_BASE_URL = "https://database.airbeats.app"
-STATS_API_KEY = "25DARK-10-2006BOY"
-GLOBAL_STATS_FILE = "airbeats/global_stats.json"
-FCM_STATS_FILE = "airbeats/fcm.json"
-MAX_GLOBAL_USERS = 10000000
+STATS_BASE_URL = os.environ.get("STATS_BASE_URL", "https://database.airbeats.app")
+STATS_API_KEY = os.environ.get("STATS_API_KEY", "DEFAULT_DEV_KEY")
+GLOBAL_STATS_FILE = os.environ.get("GLOBAL_STATS_FILE", "airbeats/global_stats.json")
+FCM_STATS_FILE = os.environ.get("FCM_STATS_FILE", "airbeats/fcm.json")
+MAX_GLOBAL_USERS = int(os.environ.get("MAX_GLOBAL_USERS", 10000000))
 
 RANK_DEFINITIONS = [
     {"name": "Echo", "thresholdHours": 1, "colors": ["#00F2FE", "#4FACFE"]},
@@ -950,6 +960,70 @@ def get_lyrics():
 
 import backend
 backend.add_yt_routes(app, get_lyrics)
+
+
+# --- AUTH AND CLOUD BACKUP ROUTES ---
+AUTH_API_BASE_URL = os.environ.get("AUTH_API_BASE_URL", "https://auth.airbeats.app")
+PROJECT_ID = os.environ.get("PROJECT_ID", "proj_35e369a4-ccfa-4d7b-be7f-3fe58dcaece4")
+
+@app.route('/api/auth/login', methods=['POST'])
+def auth_login():
+    data = request.json
+    try:
+        r = requests.post(f"{AUTH_API_BASE_URL}/api/projects/{PROJECT_ID}/auth", json=data, timeout=15)
+        return jsonify(r.json()), r.status_code
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/auth/signup', methods=['POST'])
+def auth_signup():
+    data = request.json
+    try:
+        r = requests.post(f"{AUTH_API_BASE_URL}/api/projects/{PROJECT_ID}/signup", json=data, timeout=15)
+        return jsonify(r.json()), r.status_code
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/auth/backup', methods=['POST'])
+def auth_backup():
+    email = request.args.get('email')
+    if not email:
+        return jsonify({'error': 'Missing email'}), 400
+    folder = email.replace('@', '_at_').replace('.', '_dot_')
+    file_name = f"airbeats/backups/{folder}/desktop_backup.json"
+    data = request.json
+    try:
+        r = requests.post(
+            f"{STATS_BASE_URL}/upload?file={file_name}",
+            json=data,
+            headers={'X-API-Key': STATS_API_KEY},
+            timeout=15
+        )
+        return jsonify({'success': r.ok}), r.status_code
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/auth/restore', methods=['GET'])
+def auth_restore():
+    email = request.args.get('email')
+    if not email:
+        return jsonify({'error': 'Missing email'}), 400
+    folder = email.replace('@', '_at_').replace('.', '_dot_')
+    file_name = f"airbeats/backups/{folder}/desktop_backup.json"
+    try:
+        import time
+        r = requests.get(
+            f"{STATS_BASE_URL}/download?file={file_name}&_t={int(time.time()*1000)}",
+            headers={'Cache-Control': 'no-cache'},
+            timeout=15
+        )
+        if r.ok:
+            return jsonify(r.json()), 200
+        else:
+            return jsonify({'error': 'Not found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+# ------------------------------------
 
 if __name__ == '__main__':
     print("Server started at http://127.0.0.1:8000")

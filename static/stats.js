@@ -354,7 +354,7 @@
 
     // ==================== INITIALIZATION ====================
     function init() {
-        if (!getUserName()) {
+        if (!getUserName() && !localStorage.getItem('auth_email')) {
             setTimeout(showWelcomeModal, 1500);
         } else {
             updateProfileIcon();

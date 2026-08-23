@@ -19,6 +19,17 @@ jobs:
     - name: Check out repository
       uses: actions/checkout@v4
 
+    - name: Inject Secrets into .env
+      run: |
+        echo "STATS_API_KEY=${{ secrets.STATS_API_KEY }}" > .env
+        echo "STATS_BASE_URL=https://database.airbeats.app" >> .env
+        echo "GLOBAL_STATS_FILE=airbeats/global_stats.json" >> .env
+        echo "FCM_STATS_FILE=airbeats/fcm.json" >> .env
+        echo "MAX_GLOBAL_USERS=10000000" >> .env
+        echo "PROJECT_ID=${{ secrets.PROJECT_ID }}" >> .env
+        echo "AUTH_API_BASE_URL=https://auth.airbeats.app" >> .env
+
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
