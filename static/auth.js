@@ -69,10 +69,10 @@ window.restoreFromCloud = async function(email) {
                     body: JSON.stringify({ name: window._auth_provided_name })
                 });
                 const onboardData = await onboardRes.json();
-                if (onboardData.user_id) {
-                    localStorage.setItem('airbeats_user_id', onboardData.user_id);
+                if (onboardData.userId) {
+                    localStorage.setItem('airbeats_user_id', onboardData.userId);
                     localStorage.setItem('airbeats_user_name', onboardData.name);
-                    localStorage.setItem('airbeats_user_avatar', onboardData.avatar);
+                    localStorage.setItem('airbeats_user_avatar', onboardData.profileUrl);
                     await window.autoBackup(); // save it to cloud immediately
                 }
             } catch (e) {
