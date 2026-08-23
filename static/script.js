@@ -619,7 +619,7 @@ async function renderHome() {
                         <img src="${img}">
                     </div>
                     <div class="card-title" style="margin-top: 4px;">${song.name}</div>
-                    <div style="font-size: 12px; color: var(--text-secondary);">${getClickableArtistsHtml(song)}</div>
+                    <div style="font-size: 12px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;">${getClickableArtistsHtml(song)}</div>
                 </div>`;
             });
             mfyHtml += `</div>`;
@@ -3203,7 +3203,7 @@ document.addEventListener('click', function(e) {
 
 document.getElementById('cm-add-playlist').addEventListener('click', (e) => {
     ctxMenu.style.display = 'none';
-    if (ctxActiveData && (ctxActiveData.type === 'song' || ctxActiveData.type === 'queue')) window.togglePlaylistModal(e, ctxActiveData.id);
+    if (ctxActiveData && (ctxActiveData.type === 'song' || ctxActiveData.type === 'queue')) window.toggleSongInPlaylists(e, ctxActiveData.id);
 });
 
 document.getElementById('cm-play-next').addEventListener('click', () => {
