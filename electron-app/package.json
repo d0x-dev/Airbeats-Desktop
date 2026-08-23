@@ -1,7 +1,7 @@
 {
     "name":  "airbeats",
     "version":  "6.0.0",
-    "description":  "",
+    "description":  "Airbeats Desktop App",
     "main":  "main.js",
     "scripts":  {
                     "start":  "electron .",
@@ -64,11 +64,15 @@
     "keywords":  [
 
                  ],
-    "author":  "",
+    "author":  {
+                   "email":  "admin@darkxvenom.com",
+                   "name":  "Darkboy"
+               },
     "license":  "ISC",
     "type":  "commonjs",
     "devDependencies":  {
                             "electron":  "^43.0.0",
                             "electron-builder":  "^26.15.3"
-                        }
+                        },
+    "homepage":  "https://github.com/d0x-dev/Airbeats-Desktop"
 }
