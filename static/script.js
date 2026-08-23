@@ -3093,7 +3093,7 @@ const ctxMenu = document.getElementById('custom-context-menu');
 let ctxActiveSong = null;
 
 document.addEventListener('contextmenu', function(e) {
-    const target = e.target.closest('.track-row, .card, .np-info');
+    const target = e.target.closest('.track-row, .card, .album-card, .recent-row, .np-info');
     if (!target) {
         ctxMenu.style.display = 'none';
         return;
