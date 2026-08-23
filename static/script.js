@@ -520,7 +520,7 @@ async function renderHome() {
                 [uniqueSongs[i], uniqueSongs[j]] = [uniqueSongs[j], uniqueSongs[i]];
             }
             
-            mfySongs = uniqueSongs;
+            mfySongs = uniqueSongs.slice(0, 20);
         }
 
     let html = '';
@@ -3064,7 +3064,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // ==========================================
 // CONTEXT MENU LOGIC
 // ==========================================
-const contextMenuHtml = \
+const contextMenuHtml = `
 <div id="custom-context-menu" class="custom-context-menu" style="display: none;">
     <div class="context-menu-item" id="cm-add-playlist">
         <i class="fas fa-folder-plus"></i> Add to playlist
@@ -3086,7 +3086,7 @@ const contextMenuHtml = \
         <i class="fas fa-share-alt"></i> Share
     </div>
 </div>
-\;
+`;
 document.body.insertAdjacentHTML('beforeend', contextMenuHtml);
 
 const ctxMenu = document.getElementById('custom-context-menu');
