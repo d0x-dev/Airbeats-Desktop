@@ -1568,12 +1568,15 @@ function updateQueueUI() {
     const queueList = document.getElementById('queueList');
     queueList.innerHTML = '';
     currentQueue.forEach((track, i) => {
+        if (track && track.id) window.allTracks[track.id] = track;
         const div = document.createElement('div');
-        div.className = `queue-item ${i === currentIndex ? 'playing' : ''}`;
+        div.className = `queue-item cm-queue-item ${i === currentIndex ? 'playing' : ''}`;
+        div.setAttribute('data-id', track.id);
+        div.setAttribute('data-index', i);
         div.innerHTML = `
             <img src="${getHighestQualityImage(track.image)}">
             <div style="flex:1; overflow:hidden">
-                <div style="font-size:14px; white-space:nowrap; text-overflow:ellipsis; overflow:hidden">${track.name}</div>
+                <div style="font-size:14px; white-space:nowrap; text-overflow:ellipsis; overflow:hidden">${track.name || track.title}</div>
                 <div style="font-size:12px; color:var(--text-secondary)">${track.artists?.primary?.[0]?.name || ''}</div>
             </div>
         `;
@@ -3058,9 +3061,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 
-
-
-
 // ==========================================
 // CONTEXT MENU LOGIC
 // ==========================================
@@ -3069,12 +3069,20 @@ const contextMenuHtml = `
     <div class="context-menu-item cm-song-only" id="cm-add-playlist">
         <i class="fas fa-folder-plus"></i> Add to playlist
     </div>
-    <div class="context-menu-item cm-song-only" id="cm-play-next">
+    <div class="context-menu-item cm-song-only cm-not-queue" id="cm-play-next">
         <i class="fas fa-step-forward"></i> Play next
     </div>
-    <div class="context-menu-item cm-song-only" id="cm-add-queue">
+    <div class="context-menu-item cm-song-only cm-not-queue" id="cm-add-queue">
         <i class="fas fa-list"></i> Add to queue
     </div>
+    
+    <div class="context-menu-item cm-queue-only" id="cm-remove-queue" style="display: none;">
+        <i class="fas fa-trash-alt"></i> Remove from queue
+    </div>
+    <div class="context-menu-item cm-queue-only" id="cm-play-now" style="display: none;">
+        <i class="fas fa-play"></i> Play now
+    </div>
+
     <div class="context-menu-item cm-song-only" id="cm-download">
         <i class="fas fa-download"></i> Download
     </div>
@@ -3095,10 +3103,10 @@ const contextMenuHtml = `
 document.body.insertAdjacentHTML('beforeend', contextMenuHtml);
 
 const ctxMenu = document.getElementById('custom-context-menu');
-let ctxActiveData = null; // { type: 'song'|'artist', id: ..., title: ... }
+let ctxActiveData = null; // { type: 'song'|'artist'|'queue', id: ..., title: ..., index: ... }
 
 document.addEventListener('contextmenu', function(e) {
-    const target = e.target.closest('.track-row, .card, .album-card, .recent-row, .np-info, .artist-card, .clickable-artist');
+    const target = e.target.closest('.track-row, .card, .album-card, .recent-row, .np-info, .artist-card, .clickable-artist, .cm-queue-item');
     if (!target) {
         ctxMenu.style.display = 'none';
         return;
@@ -3107,9 +3115,14 @@ document.addEventListener('contextmenu', function(e) {
     let type = null;
     let objId = null;
     let objTitle = null;
+    let objIndex = null;
 
     const onclickStr = target.getAttribute('onclick');
-    if (onclickStr && onclickStr.includes('playSingleTrack')) {
+    if (target.classList.contains('cm-queue-item')) {
+        type = 'queue';
+        objId = target.getAttribute('data-id');
+        objIndex = parseInt(target.getAttribute('data-index'), 10);
+    } else if (onclickStr && onclickStr.includes('playSingleTrack')) {
         const match = onclickStr.match(/'([^']+)'/);
         if (match) {
             type = 'song';
@@ -3135,23 +3148,31 @@ document.addEventListener('contextmenu', function(e) {
         return;
     }
     
-    if (type === 'song') {
+    if (type === 'song' || type === 'queue') {
         const song = window.allTracks[objId];
         if (!song) {
             ctxMenu.style.display = 'none';
             return;
         }
-        objTitle = song.title;
+        objTitle = song.title || song.name;
     }
     
     e.preventDefault();
-    ctxActiveData = { type, id: objId, title: objTitle };
+    ctxActiveData = { type, id: objId, title: objTitle, index: objIndex };
     
     // Toggle visibility of options
-    document.querySelectorAll('.cm-song-only').forEach(el => el.style.display = type === 'song' ? 'flex' : 'none');
+    const isSong = type === 'song' || type === 'queue';
+    document.querySelectorAll('.cm-song-only').forEach(el => el.style.display = isSong ? 'flex' : 'none');
     document.querySelectorAll('.cm-artist-only').forEach(el => el.style.display = type === 'artist' ? 'flex' : 'none');
+    
+    document.querySelectorAll('.cm-queue-only').forEach(el => el.style.display = type === 'queue' ? 'flex' : 'none');
+    document.querySelectorAll('.cm-not-queue').forEach(el => {
+        if (el.classList.contains('cm-song-only') && type === 'queue') {
+            el.style.display = 'none';
+        }
+    });
 
-    if (type === 'song') {
+    if (isSong) {
         const playlists = typeof getPlaylists === 'function' ? getPlaylists() : [];
         const isAdded = playlists.some(pl => pl.songs.includes(objId));
         const plItem = document.getElementById('cm-add-playlist');
@@ -3182,7 +3203,7 @@ document.addEventListener('click', function(e) {
 
 document.getElementById('cm-add-playlist').addEventListener('click', (e) => {
     ctxMenu.style.display = 'none';
-    if (ctxActiveData && ctxActiveData.type === 'song') window.togglePlaylistModal(e, ctxActiveData.id);
+    if (ctxActiveData && (ctxActiveData.type === 'song' || ctxActiveData.type === 'queue')) window.togglePlaylistModal(e, ctxActiveData.id);
 });
 
 document.getElementById('cm-play-next').addEventListener('click', () => {
@@ -3213,9 +3234,36 @@ document.getElementById('cm-add-queue').addEventListener('click', () => {
     }
 });
 
+document.getElementById('cm-remove-queue').addEventListener('click', () => {
+    ctxMenu.style.display = 'none';
+    if (!ctxActiveData || ctxActiveData.type !== 'queue') return;
+    
+    const idx = ctxActiveData.index;
+    if (idx !== null && window.currentQueue) {
+        window.currentQueue.splice(idx, 1);
+        if (window.currentIndex >= idx && window.currentIndex > 0) {
+            window.currentIndex--;
+        }
+        window.updateQueueUI();
+        if(window.showToast) window.showToast("Removed from queue");
+    }
+});
+
+document.getElementById('cm-play-now').addEventListener('click', () => {
+    ctxMenu.style.display = 'none';
+    if (!ctxActiveData || ctxActiveData.type !== 'queue') return;
+    
+    const idx = ctxActiveData.index;
+    if (idx !== null && window.currentQueue) {
+        window.currentIndex = idx;
+        window.loadCurrentTrack();
+        window.updateQueueUI();
+    }
+});
+
 document.getElementById('cm-download').addEventListener('click', () => {
     ctxMenu.style.display = 'none';
-    if (!ctxActiveData || ctxActiveData.type !== 'song') return;
+    if (!ctxActiveData || (ctxActiveData.type !== 'song' && ctxActiveData.type !== 'queue')) return;
     window.open('/api/play_stream2?id=' + ctxActiveData.id, '_blank');
     if(window.showToast) window.showToast("Downloading " + ctxActiveData.title);
 });
@@ -3230,7 +3278,7 @@ document.getElementById('cm-subscribe').addEventListener('click', () => {
         subbed = subbed.filter(a => a.id !== ctxActiveData.id);
         if(window.showToast) window.showToast("Unsubscribed from " + ctxActiveData.title);
     } else {
-        subbed.push({ id: ctxActiveData.id, name: ctxActiveData.title, image: '' }); // Image can't easily be extracted here without DOM scraping, but it'll sync
+        subbed.push({ id: ctxActiveData.id, name: ctxActiveData.title, image: '' });
         if(window.showToast) window.showToast("Subscribed to " + ctxActiveData.title);
     }
     localStorage.setItem('subscribedArtists', JSON.stringify(subbed));
@@ -3240,7 +3288,8 @@ document.getElementById('cm-subscribe').addEventListener('click', () => {
 document.getElementById('cm-copy-link').addEventListener('click', () => {
     ctxMenu.style.display = 'none';
     if (!ctxActiveData) return;
-    const link = "https://play.airbeats.app/" + ctxActiveData.type + "?id=" + ctxActiveData.id;
+    const typeStr = ctxActiveData.type === 'queue' ? 'song' : ctxActiveData.type;
+    const link = "https://play.airbeats.app/" + typeStr + "?id=" + ctxActiveData.id;
     navigator.clipboard.writeText(link).then(() => {
         if(window.showToast) window.showToast("Link copied to clipboard");
     });
@@ -3249,7 +3298,8 @@ document.getElementById('cm-copy-link').addEventListener('click', () => {
 document.getElementById('cm-share').addEventListener('click', () => {
     ctxMenu.style.display = 'none';
     if (!ctxActiveData) return;
-    const link = "https://play.airbeats.app/" + ctxActiveData.type + "?id=" + ctxActiveData.id;
+    const typeStr = ctxActiveData.type === 'queue' ? 'song' : ctxActiveData.type;
+    const link = "https://play.airbeats.app/" + typeStr + "?id=" + ctxActiveData.id;
     if (navigator.share) {
         navigator.share({
             title: ctxActiveData.title,
