@@ -1,88 +1,87 @@
 {
-    "name":  "airbeats",
-    "version":  "6.2.0",
-    "description":  "Airbeats Desktop App",
-    "main":  "main.js",
-    "scripts":  {
-                    "start":  "electron .",
-                    "build":  "electron-builder --win"
-                },
-    "build":  {
-                  "appId":  "com.airbeats.standalone",
-                  "productName":  "Airbeats",
-                  "publish":  null,
-                  "directories":  {
-                                      "buildResources":  "build"
-                                  },
-                  "extraResources":  [
-                                         {
-                                             "from":  "../dist/server",
-                                             "to":  "server",
-                                             "filter":  [
-                                                            "**/*"
-                                                        ]
-                                         }
-                                     ],
-                  "win":  {
-                              "target":  [
-                                             "nsis",
-                                             "portable"
-                                         ],
-                              "icon":  "icon.png"
-                          },
-                  "nsis":  {
-                               "oneClick":  false,
-                               "perMachine":  true,
-                               "allowToChangeInstallationDirectory":  true,
-                               "createDesktopShortcut":  "always",
-                               "createStartMenuShortcut":  true,
-                               "shortcutName":  "Airbeats",
-                               "license":  "license.txt",
-                               "artifactName":  "Airbeats-v${version}-setup.${ext}"
-                           },
-                  "portable":  {
-                                   "artifactName":  "Airbeats-v${version}-portable.${ext}"
-                               },
-                  "mac":  {
-                              "target":  [
-                                             "dmg"
-                                         ],
-                              "icon":  "icon.png"
-                          },
-                  "dmg":  {
-                              "artifactName":  "Airbeats-v${version}-mac.${ext}",
-                              "title":  "Install Airbeats"
-                          },
-                  "linux":  {
-                                "target":  [
-                                               "AppImage",
-                                               "deb",
-                                               "snap"
-                                           ],
-                                "icon":  "icon.png"
-                            },
-                  "appImage":  {
-                                   "artifactName":  "Airbeats-v${version}-linux.${ext}"
-                               },
-                  "deb":  {
-                              "artifactName":  "Airbeats-v${version}-linux.${ext}"
-                          },
-                  "snap":  {
-                               "artifactName":  "Airbeats-v${version}-linux.${ext}"
-                           }
-              },
-    "keywords":  [
-
-                 ],
-    "author":  {
-                   "email":  "admin@darkxvenom.com",
-                   "name":  "Darkboy"
-               },
-    "license":  "ISC",
-    "type":  "commonjs",
-    "devDependencies":  {
-                            "electron":  "^43.0.0",
-                            "electron-builder":  "^26.15.3"
-                        },
-    "homepage":  "https://github.com/d0x-dev/Airbeats-Desktop"
+    "name": "airbeats",
+    "version": "6.2.1",
+    "description": "Airbeats Desktop App",
+    "main": "main.js",
+    "scripts": {
+        "start": "electron .",
+        "build": "electron-builder --win"
+    },
+    "build": {
+        "appId": "com.airbeats.standalone",
+        "productName": "Airbeats",
+        "publish": null,
+        "directories": {
+            "buildResources": "build"
+        },
+        "extraResources": [
+            {
+                "from": "../dist/server",
+                "to": "server",
+                "filter": [
+                    "**/*"
+                ]
+            }
+        ],
+        "win": {
+            "target": [
+                "nsis",
+                "portable"
+            ],
+            "icon": "icon.png"
+        },
+        "nsis": {
+            "oneClick": false,
+            "perMachine": true,
+            "allowToChangeInstallationDirectory": true,
+            "createDesktopShortcut": "always",
+            "createStartMenuShortcut": true,
+            "shortcutName": "Airbeats",
+            "license": "license.txt",
+            "artifactName": "Airbeats-v${version}-setup.${ext}"
+        },
+        "portable": {
+            "artifactName": "Airbeats-v${version}-portable.${ext}"
+        },
+        "mac": {
+            "target": [
+                "dmg"
+            ],
+            "icon": "icon.png"
+        },
+        "dmg": {
+            "artifactName": "Airbeats-v${version}-mac.${ext}",
+            "title": "Install Airbeats"
+        },
+        "linux": {
+            "target": [
+                "AppImage",
+                "deb",
+                "snap"
+            ],
+            "icon": "icon.png"
+        },
+        "appImage": {
+            "artifactName": "Airbeats-v${version}-linux.${ext}"
+        },
+        "deb": {
+            "artifactName": "Airbeats-v${version}-linux.${ext}"
+        },
+        "snap": {
+            "artifactName": "Airbeats-v${version}-linux.${ext}",
+            "useTemplateApp": false
+        }
+    },
+    "keywords": [],
+    "author": {
+        "email": "admin@darkxvenom.com",
+        "name": "Darkboy"
+    },
+    "license": "ISC",
+    "type": "commonjs",
+    "devDependencies": {
+        "electron": "^43.0.0",
+        "electron-builder": "^26.15.3"
+    },
+    "homepage": "https://github.com/d0x-dev/Airbeats-Desktop"
 }
