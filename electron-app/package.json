@@ -69,7 +69,8 @@
         },
         "snap": {
             "artifactName": "Airbeats-v${version}-linux.${ext}",
-            "useTemplateApp": false
+            "useTemplateApp": false,
+            "base": "core22"
         }
     },
     "keywords": [],

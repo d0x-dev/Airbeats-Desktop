@@ -72,12 +72,19 @@ jobs:
 
     - name: Install Snapcraft (Linux)
       if: matrix.os == 'ubuntu-latest'
-      run: sudo snap install snapcraft --classic --channel=8.x/stable
+      run: |
+        sudo snap install lxd
+        sudo lxd init --auto
+        sudo usermod -a -G lxd $USER
+        sudo snap install snapcraft --classic
 
     - name: Build Electron app (Linux)
       if: matrix.os == 'ubuntu-latest'
       working-directory: ./electron-app
-      run: npx electron-builder --linux --publish never
+      env:
+        SNAPCRAFT_BUILD_ENVIRONMENT: lxd
+      run: |
+        sg lxd -c "npx electron-builder --linux --publish never"
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
