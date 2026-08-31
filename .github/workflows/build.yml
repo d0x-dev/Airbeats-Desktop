@@ -72,7 +72,7 @@ jobs:
 
     - name: Install Snapcraft (Linux)
       if: matrix.os == 'ubuntu-latest'
-      run: sudo snap install snapcraft --classic
+      run: sudo snap install snapcraft --classic --channel=8.x/stable
 
     - name: Build Electron app (Linux)
       if: matrix.os == 'ubuntu-latest'
