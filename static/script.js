@@ -64,6 +64,37 @@ window.setDynamicIsland = function(enabled) {
     localStorage.setItem('dynamic_island_enabled', enabled ? 'true' : 'false');
     if (window.electronAPI && window.electronAPI.toggleDynamicIsland) {
         window.electronAPI.toggleDynamicIsland(enabled);
+        
+        // Force the island to show up immediately if there is a track playing
+        if (enabled) {
+            setTimeout(() => {
+                if (typeof currentTrack !== 'undefined' && currentTrack) {
+                    const isFav = favoriteSongs.some(s => s.id === currentTrack.id);
+                    window.electronAPI.updateDynamicIsland({
+                        type: 'track',
+                        title: currentTrack.name,
+                        artist: currentTrack.artist,
+                        image: currentTrack.image,
+                        isFav: isFav,
+                        isRepeat: window.isRepeat || false
+                    });
+                    
+                    if (document.body.classList.contains('is-playing')) {
+                        window.electronAPI.updateDynamicIsland({ type: 'state', state: 'play' });
+                    }
+                } else {
+                    // Send a dummy track to force it to show up so user knows it works
+                    window.electronAPI.updateDynamicIsland({
+                        type: 'track',
+                        title: 'Airbeats Desktop',
+                        artist: 'Ready to play',
+                        image: '',
+                        isFav: false,
+                        isRepeat: false
+                    });
+                }
+            }, 500);
+        }
     }
     
     // Update appearance buttons if we are on the settings page
