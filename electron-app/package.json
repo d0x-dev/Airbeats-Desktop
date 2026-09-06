@@ -1,6 +1,6 @@
 {
     "name": "airbeats",
-    "version": "6.2.1",
+    "version": "6.2.2",
     "description": "Airbeats Desktop App",
     "main": "main.js",
     "scripts": {
@@ -67,9 +67,8 @@
         "deb": {
             "artifactName": "Airbeats-v${version}-linux.${ext}"
         },
-        "snap": {
+        "snapcraft": {
             "artifactName": "Airbeats-v${version}-linux.${ext}",
-            "useTemplateApp": false,
             "base": "core22"
         }
     },
