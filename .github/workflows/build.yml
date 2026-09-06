@@ -50,11 +50,21 @@ jobs:
       run: |
         pyinstaller --name server --onedir --noconsole --add-data "templates:templates" --add-data "static:static" --collect-data ytmusicapi -y app.py
         mv dist/server/server dist/server/server.exe
-
     - name: Set up Node.js
       uses: actions/setup-node@v4
       with:
         node-version: '22'
+
+    - name: Sync package.json Version from Release Tag
+      if: startsWith(github.ref, 'refs/tags/')
+      shell: bash
+      working-directory: ./electron-app
+      run: |
+        TAG_NAME="${GITHUB_REF#refs/tags/}"
+        VERSION_NAME="${TAG_NAME#v}"
+        echo "Detected tag: $TAG_NAME, injecting version: $VERSION_NAME into package.json"
+        node -e "let pkg=require('./package.json'); pkg.version='$VERSION_NAME'; require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2));"
+
 
     - name: Install Node dependencies
       working-directory: ./electron-app
