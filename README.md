@@ -38,7 +38,7 @@
 
 | Link | OS |
 |------|----|
-| 🌍 [Official Website](http://darkxvenom.com) | Learn more |
+| 🌍 [Official Website](http://airbeats.org) | Learn more |
 | 🪟 [Download for Windows (Setup)](https://github.com/d0x-dev/Airbeats-Desktop/releases/latest/download/Airbeats-v6.1.0-setup.exe) | Windows 10/11 |
 | 🪟 [Download for Windows (Portable)](https://github.com/d0x-dev/Airbeats-Desktop/releases/latest/download/Airbeats-v6.1.0-portable.exe) | Windows 10/11 |
 | 🍎 [Download for macOS](https://github.com/d0x-dev/Airbeats-Desktop/releases/latest/download/Airbeats-v6.1.0-mac.dmg) | macOS |
