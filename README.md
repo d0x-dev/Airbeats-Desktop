@@ -114,7 +114,7 @@ cd Airbeats-Desktop
 
 # 3. Create a python virtual environment
 python -m venv venv
-venv\Scriptsctivate
+venv\Scripts\activate
 pip install -r requirements.txt
 
 # 4. Navigate to the electron wrapper
