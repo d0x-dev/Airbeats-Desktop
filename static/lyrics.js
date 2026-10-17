@@ -200,6 +200,49 @@ let isLyricsOpen = false;
 let lyricsAnimationFrame = null;
 let lastAudioTimeMs = 0;
 let lastTimeUpdateReal = 0;
+
+// Positive = lyrics appear LATER than audio (delay), negative = earlier.
+// Per-song value saved in localStorage; 0 default.
+let lyricsOffsetMs = 0;
+
+function airLyricsOffsetsStore() {
+    try { return JSON.parse(localStorage.getItem('lyrics_sync_offsets') || '{}') || {}; }
+    catch (e) { return {}; }
+}
+
+function airSaveLyricsOffset(songId, ms) {
+    if (!songId) return;
+    try {
+        const store = airLyricsOffsetsStore();
+        if (ms) store[songId] = ms; else delete store[songId];
+        localStorage.setItem('lyrics_sync_offsets', JSON.stringify(store));
+    } catch (e) { /* ignore */ }
+}
+
+function airUpdateLyricsOffsetLabel() {
+    const el = document.getElementById('lyricsSyncOffsetLabel');
+    if (!el) return;
+    const ms = lyricsOffsetMs || 0;
+    el.textContent = ms === 0 ? '0s' : (ms > 0 ? '+' : '') + (ms / 1000).toFixed(2) + 's';
+    el.style.color = ms === 0 ? 'var(--text-secondary)' : 'var(--accent)';
+}
+
+function airCurrentLyricsSongId() {
+    const track = window.getCurrentTrack ? window.getCurrentTrack() : null;
+    return track && (track.id || track.videoId) ? String(track.id || track.videoId) : '';
+}
+
+window.airLyricsOffsetStep = function (delta) {
+    lyricsOffsetMs = Math.max(-5000, Math.min(5000, (lyricsOffsetMs || 0) + (delta || 0)));
+    airSaveLyricsOffset(airCurrentLyricsSongId(), lyricsOffsetMs);
+    airUpdateLyricsOffsetLabel();
+};
+
+window.airLyricsOffsetReset = function () {
+    lyricsOffsetMs = 0;
+    airSaveLyricsOffset(airCurrentLyricsSongId(), 0);
+    airUpdateLyricsOffsetLabel();
+};
 let currentLyricsFetchId = 0;
 
 window.currentLyricsMeta = {
@@ -250,7 +293,10 @@ function renderLyrics(parsedLines, loader) {
 
         lineDiv.onclick = () => {
             const audio = document.getElementById('audioElement');
-            if (audio && line.begin >= 0) audio.currentTime = line.begin / 1000;
+            if (audio && line.begin >= 0 && isFinite(line.begin)) {
+                const target = (line.begin + (lyricsOffsetMs || 0)) / 1000;
+                if (isFinite(target) && target >= 0) audio.currentTime = target;
+            }
         };
 
         const transText = transLines[index] || line.translatedText || "";
@@ -401,6 +447,10 @@ async function fetchLyricsData(song, forceRefresh = false, specificProvider = nu
         }
         
         if (parsedLines && parsedLines.length > 0) {
+            // Load the per-song sync offset (if previously adjusted)
+            const sid = song.id ? String(song.id) : '';
+            lyricsOffsetMs = sid ? (airLyricsOffsetsStore()[sid] || 0) : 0;
+            airUpdateLyricsOffsetLabel();
             // Check if there is cached translation for this song
             loadCachedTranslationIfAvailable(song.id);
             renderLyrics(parsedLines, loader);
@@ -444,6 +494,20 @@ function loadCachedTranslationIfAvailable(songId) {
 // SYNCHRONIZATION RUNNER
 // ==============================================================================
 
+// Re-sync the interpolated clock on stall/buffer/seek — otherwise the
+// lyrics drift ahead of the audio while buffering.
+function airHookLyricsClock() {
+    const audio = document.getElementById('audioElement');
+    if (!audio || audio.dataset.airClockHooked === '1') return false;
+    audio.dataset.airClockHooked = '1';
+    ['waiting', 'stalled', 'playing', 'seeked', 'canplay', 'ratechange'].forEach((ev) => audio.addEventListener(ev, () => {
+        lastAudioTimeMs = Math.floor(audio.currentTime * 1000);
+        lastTimeUpdateReal = performance.now();
+    }));
+    return true;
+}
+if (!airHookLyricsClock()) document.addEventListener('DOMContentLoaded', airHookLyricsClock);
+
 function updateLyricsSync() {
     const audio = document.getElementById('audioElement');
     if (!audio || !isLyricsOpen || !lyricsData.length) {
@@ -457,12 +521,15 @@ function updateLyricsSync() {
             lastAudioTimeMs = audioTimeMs;
             lastTimeUpdateReal = performance.now();
         }
-        audioTimeMs = lastAudioTimeMs + (performance.now() - lastTimeUpdateReal);
+        // Cap the interpolation at 350ms — the lyric clock must not run away
+        // from the audio during long stalls.
+        const sinceTick = performance.now() - lastTimeUpdateReal;
+        audioTimeMs = lastAudioTimeMs + Math.min(sinceTick, 350);
     } else {
         lastAudioTimeMs = audioTimeMs;
         lastTimeUpdateReal = performance.now();
     }
-    const currentTimeMs = Math.floor(audioTimeMs);
+    const currentTimeMs = Math.floor(audioTimeMs) - (lyricsOffsetMs || 0);
     const lyricsContainer = document.getElementById('lyricsContent');
     
     // Update left panel slider & play/pause icon
@@ -587,10 +654,13 @@ const lyricsProgress = document.getElementById('lyricsProgressBarContainer');
 if (lyricsProgress) {
     lyricsProgress.addEventListener('click', (e) => {
         const rect = lyricsProgress.getBoundingClientRect();
-        const percent = (e.clientX - rect.left) / rect.width;
+        let percent = rect.width ? (e.clientX - rect.left) / rect.width : 0;
+        if (!isFinite(percent)) return;
+        percent = Math.max(0, Math.min(1, percent));
         const audio = document.getElementById('audioElement');
-        if (audio && audio.duration) {
-            audio.currentTime = percent * audio.duration;
+        if (audio && audio.duration && isFinite(audio.duration)) {
+            const target = percent * audio.duration;
+            if (isFinite(target)) audio.currentTime = target;
         }
     });
 }
@@ -1363,7 +1433,7 @@ window.filterLanguages = function(query) {
                 <span style="font-size: 13px; color: ${isSelected ? 'var(--accent)' : '#fff'};">${lang.name}</span>
                 ${lang.popular ? '<span class="popular-lang-pill">Popular</span>' : ''}
             </div>
-            ${isSelected ? '<i class="fas fa-check" style="color: var(--accent); font-size: 12px;"></i>' : ''}
+            ${isSelected ? '<i class="fas fa-check" style="color: var(--accent-text); font-size: 12px;"></i>' : ''}
         `;
         container.appendChild(item);
     });

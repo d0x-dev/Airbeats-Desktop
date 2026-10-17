@@ -36,6 +36,49 @@ window.setTheme = function(theme) {
 
 window.setTheme(localStorage.getItem('theme') || 'light');
 
+// Escape a value so it is safe inside a single-quoted JS string that sits in a
+// double-quoted HTML attribute (inline onclick / onload / onerror handlers).
+window.airJsAttrEsc = function (v) {
+    return String(v == null ? '' : v)
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/[\r\n]+/g, ' ');
+};
+
+// Every page/tab change starts from the top of the scroll container.
+window.airScrollTop = function () {
+    document.querySelectorAll('.scroll-container').forEach((el) => {
+        try { el.scrollTop = 0; } catch (e) { }
+    });
+    // .app-window focus/scrollIntoView can silently scroll the container and
+    // clip the top bar. Reset scroll on every navigation.
+    document.querySelectorAll('.app-window').forEach((el) => {
+        try { el.scrollTop = 0; } catch (e) { }
+    });
+};
+
+// Official current brand marks (Discord 2021, YouTube play button) as inline SVGs —
+// Font Awesome still ships the old glyphs. fill: currentColor, so callers can tint
+// via the `color` argument or inherited color.
+window.airBrandIcon = function (name, size, color, extraStyle) {
+    size = size || 16;
+    const style = 'display:inline-block;vertical-align:-0.15em;' +
+        (color ? 'color:' + color + ';' : '') + (extraStyle || '');
+    if (name === 'discord') {
+        return '<svg viewBox="0 0 127.14 96.36" width="' + size + '" height="' + size +
+            '" style="' + style + '" aria-hidden="true"><path fill="currentColor" d="M107.7 8.07A105.15 105.15 0 0 0 81.47 0a72.06 72.06 0 0 0-3.36 6.83 97.68 97.68 0 0 0-29.11 0A72.37 72.37 0 0 0 45.64 0a105.89 105.89 0 0 0-26.25 8.09C2.79 32.65-1.71 56.6.54 80.21h0A105.73 105.73 0 0 0 32.71 96.36 77.7 77.7 0 0 0 39.6 85.25a68.42 68.42 0 0 1-10.85-5.18c.91-.66 1.8-1.34 2.66-2a75.57 75.57 0 0 0 64.32 0c.87.71 1.76 1.39 2.66 2a68.68 68.68 0 0 1-10.87 5.19 77 77 0 0 0 6.89 11.1A105.25 105.25 0 0 0 126.6 80.22h0C129.24 52.84 122.09 29.11 107.7 8.07ZM42.45 65.69C36.18 65.69 31 60 31 53s5-12.74 11.43-12.74S54 46 53.89 53s-5.05 12.69-11.44 12.69Zm42.24 0C78.41 65.69 73.25 60 73.25 53s5-12.74 11.44-12.74S96.23 46 96.12 53s-5.04 12.69-11.43 12.69Z"/></svg>';
+    }
+    if (name === 'youtube') {
+        return '<svg viewBox="0 0 24 24" width="' + size + '" height="' + size +
+            '" style="' + style + '" aria-hidden="true"><path fill="currentColor" d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>';
+    }
+    return '';
+};
+
 window.setWaveformAnimation = function(enabled) {
     if (enabled) {
         document.body.classList.add('animated-waveform');
@@ -195,10 +238,13 @@ window.toggleHeart = (event, trackId) => {
     const btn = event ? event.currentTarget : null;
     
     if (!Array.isArray(favoriteSongs)) favoriteSongs = [];
-    const idx = favoriteSongs.findIndex(s => s && s.id === trackId);
+    let idx = favoriteSongs.findIndex(s => s && s.id === trackId);
+    if (idx === -1) idx = favoriteSongs.findIndex(s => s && s.saavnId === trackId);
     let isFav = false;
+    let removedEntry = null;
     
     if (idx > -1) {
+        removedEntry = favoriteSongs[idx];
         favoriteSongs.splice(idx, 1);
         isFav = false;
         if (window.showToast) window.showToast('Removed from favorites');
@@ -223,6 +269,7 @@ window.toggleHeart = (event, trackId) => {
     }
     saveFavorites();
     window.favoriteSongs = favoriteSongs;
+    if (window.ytMirrorLike) window.ytMirrorLike((removedEntry && removedEntry.id) || trackId, isFav);
     
     // Safely update the clicked element without creating duplicate icons or wiping wrapper classes
     if (btn) {
@@ -359,15 +406,64 @@ const RPC_PREF = 'discord_rpc_enabled';
 window.discordRpcEnabled = localStorage.getItem(RPC_PREF) !== 'false';
 
 
-window.discordToggleRpc = function(el) {
-    window.discordRpcEnabled = !!el.checked;
-    try { localStorage.setItem(RPC_PREF, el.checked ? 'true' : 'false'); } catch (e) {}
-    if (!el.checked && window.discordAPI && window.discordAPI.setActivity) {
+window.discordSetRpcEnabled = function(on, silent) {
+    window.discordRpcEnabled = !!on;
+    try { localStorage.setItem(RPC_PREF, on ? 'true' : 'false'); } catch (e) {}
+    const cb = document.getElementById('btn-discord-rpc');
+    if (cb && cb.checked !== !!on) cb.checked = !!on;
+    if (!on && window.discordAPI && window.discordAPI.setActivity) {
         window.discordAPI.setActivity({ details: '', state: '' });
     } else {
         window.syncDiscordActivity();
     }
+    if (!silent && window.showToast) window.showToast('Discord Rich Presence ' + (on ? 'on' : 'off'));
 };
+
+window.discordToggleRpc = function(el) {
+    window.discordSetRpcEnabled(!!el.checked, true);
+};
+
+const RPC_STATUS_PREF = 'discord_rpc_status';
+window.__discordStatus = (function () {
+    const s = localStorage.getItem(RPC_STATUS_PREF);
+    return ['online', 'idle', 'dnd', 'invisible'].indexOf(s) >= 0 ? s : 'online';
+})();
+
+window.discordApplyStatusUi = function() {
+    document.querySelectorAll('#discord-status-chips [data-status]').forEach((el) => {
+        el.classList.toggle('is-on', el.dataset.status === window.__discordStatus);
+    });
+};
+
+window.discordChooseStatus = function(s) {
+    if (['online', 'idle', 'dnd', 'invisible'].indexOf(s) < 0) return;
+    window.__discordStatus = s;
+    try { localStorage.setItem(RPC_STATUS_PREF, s); } catch (e) {}
+    window.discordApplyStatusUi();
+    if (window.discordAPI && window.discordAPI.setStatus) {
+        window.discordAPI.setStatus(s).then((r) => {
+            if (r && r.ok === false && window.showToast) window.showToast('Discord status update failed');
+        }).catch(() => {});
+    }
+};
+
+const RPC_DETAILS_PREF = 'discord_use_details';
+window.discordUseDetails = localStorage.getItem(RPC_DETAILS_PREF) === 'true';
+
+window.discordToggleDetails = function(el) {
+    window.discordUseDetails = !!el.checked;
+    try { localStorage.setItem(RPC_DETAILS_PREF, el.checked ? 'true' : 'false'); } catch (e) {}
+    window.syncDiscordActivity();
+};
+
+document.addEventListener('keydown', (e) => {
+    if (!e.ctrlKey || !e.shiftKey || e.altKey || e.metaKey) return;
+    if (e.key !== 'D' && e.key !== 'd') return;
+    const el = e.target;
+    if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+    e.preventDefault();
+    window.discordSetRpcEnabled(!window.discordRpcEnabled, false);
+});
 
 window.__discordSyncNow = function() {
     if (!window.discordRpcEnabled) return;
@@ -396,16 +492,19 @@ window.__discordSyncNow = function() {
         }
     }
 
+    const rpcButtons = window.discordTrackButtons(t);
     window.discordAPI.setActivity({
         details: t.name || '',
-        state: t.artists?.primary?.[0]?.name || '',
+        state: window.discordTrackArtists(t),
         largeImage: getHighestQualityImage(t.image),
-        largeText: t.name,
+        largeText: t.album?.name || t.name,
         smallImage: 'https://raw.githubusercontent.com/d0x-dev/Airbeats-Desktop/main/electron-app/icon.png',
         smallText: 'AirBeats',
         startTimestamp: start,
         endTimestamp: end,
-        paused: !playing
+        statusDisplayType: window.discordUseDetails ? 2 : 1,
+        detailsUrl: window.discordSongUrl(t) || undefined,
+        buttons: rpcButtons
     });
     if (window.dlog) {
         window.dlog('sync playing=' + playing + ' t=' + (t.name || '')
@@ -413,9 +512,236 @@ window.__discordSyncNow = function() {
     }
 };
 
+window.discordTrackArtists = function (t) {
+    const list = (t && t.artists && t.artists.primary) ? t.artists.primary : [];
+    const names = list.map((a) => a && a.name).filter(Boolean);
+    return names.length ? names.join(', ') : '';
+};
+
+window.discordSongUrl = function (t) {
+    return t && t.id ? 'https://play.airbeats.org/song?id=' + encodeURIComponent(t.id) : '';
+};
+
+window.discordTrackButtons = function (t) {
+    const songUrl = window.discordSongUrl(t);
+    const list = [{ label: 'Visit AirBeats', url: 'https://airbeats.org' }];
+    if (songUrl) list.unshift({ label: 'Listen on YouTube Music', url: songUrl });
+    return list;
+};
+
 window.syncDiscordActivity = function() {
     clearTimeout(window.__discordSyncTimer);
     window.__discordSyncTimer = setTimeout(window.__discordSyncNow, 400);
+};
+
+window.discordUpdatePreview = function() {
+    const box = document.getElementById('discord-preview');
+    if (!box) return;
+    const t = window.__discordTrack;
+    if (!t) {
+        box.style.display = 'none';
+        return;
+    }
+    box.style.display = '';
+    const art = document.getElementById('discord-preview-art');
+    if (art) art.src = getHighestQualityImage(t.image) || '';
+    const title = document.getElementById('discord-preview-title');
+    if (title) title.textContent = t.name || '';
+    const artist = document.getElementById('discord-preview-artist');
+    if (artist) artist.textContent = window.discordTrackArtists(t);
+    const el = document.getElementById('audioElement');
+    const dur = (el && isFinite(el.duration) && el.duration > 0) ? el.duration : (t.duration || 0);
+    const pos = (el && isFinite(el.currentTime)) ? el.currentTime : 0;
+    const bar = document.getElementById('discord-preview-bar');
+    if (bar) bar.style.width = dur > 0 ? Math.min(100, (pos / dur) * 100).toFixed(1) + '%' : '0%';
+    const fmt = (s) => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+    const elapsed = document.getElementById('discord-preview-elapsed');
+    if (elapsed) elapsed.textContent = fmt(pos);
+    const total = document.getElementById('discord-preview-total');
+    if (total) total.textContent = fmt(dur);
+    const wrap = document.getElementById('discord-preview-buttons');
+    if (wrap) {
+        wrap.innerHTML = window.discordTrackButtons(t)
+            .map((b) => `<span style="flex: 1; text-align: center; padding: 8px 10px; border-radius: 8px; background: var(--app-bg); font-size: 13px;">${b.label}</span>`)
+            .join('');
+    }
+};
+
+setInterval(() => {
+    if (document.getElementById('discord-preview')) window.discordUpdatePreview();
+}, 1000);
+
+window.ytAccount = null;
+window.ytAccountCardMode = 'full';
+
+window.ytAccountCardHtml = function() {
+    const state = window.ytAccount;
+    const compact = window.ytAccountCardMode === 'compact';
+    const photo = state && state.photo
+        ? `<img src="${state.photo}" referrerpolicy="no-referrer" style="width: 48px; height: 48px; border-radius: 50%; object-fit: cover; flex: none;">`
+        : `<span style="width: 48px; display: inline-flex; justify-content: center; flex: none;">${window.airBrandIcon('youtube', 30, '#FF0000')}</span>`;
+    const name = state ? (state.name || 'YouTube Music') : 'Not signed in';
+    const subtitle = state ? (state.handle || 'Signed in') : 'Sign in to sync your library';
+    if (compact) {
+        return `
+            <div style="background: var(--search-bg); padding: 24px; border-radius: 12px; margin-bottom: 24px;">
+                <h3 style="margin-top: 0; font-size: 20px;"><i class="fas fa-user-circle" style="color: var(--accent-text);"></i> Account</h3>
+                <div style="display: flex; align-items: center; gap: 14px;">
+                    ${photo}
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="font-size: 15px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${name}</div>
+                        <div style="font-size: 12px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${subtitle}</div>
+                    </div>
+                    <a href="#settings/account" class="btn" style="background: var(--app-bg); color: var(--text-primary); padding: 10px 18px; border-radius: 8px; text-decoration: none; flex: none;">Manage</a>
+                </div>
+            </div>
+        `;
+    }
+    return `
+        <div style="background: var(--search-bg); padding: 24px; border-radius: 12px; margin-bottom: 24px;">
+            <h3 style="margin-top: 0; font-size: 20px;">${window.airBrandIcon('youtube', 18, '#FF0000')} YouTube Music Account</h3>
+            <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 14px;">Sign in with your Google account to load your playlists, liked songs and subscriptions inside AirBeats.</p>
+            <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 18px;">
+                ${photo}
+                <div style="flex: 1; min-width: 0;">
+                    <div style="font-size: 16px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${name}</div>
+                    <div style="font-size: 13px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${subtitle}</div>
+                </div>
+            </div>
+            <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                <button class="btn" style="background: #FF0000; color: #fff; padding: 10px 18px; border-radius: 8px; cursor: pointer;" onclick="window.ytOpenLogin()"><i class="fab fa-google"></i> ${state ? 'Switch Account' : 'Sign in with Google'}</button>
+                ${state ? `<button class="btn" style="background: var(--app-bg); color: var(--text-primary); padding: 10px 18px; border-radius: 8px; cursor: pointer;" onclick="window.ytLogout()"><i class="fas fa-right-from-bracket"></i> Sign out</button>` : ''}
+            </div>
+            <details style="margin-top: 16px;">
+                <summary style="cursor: pointer; color: var(--text-secondary); font-size: 13px;">Login window not working? Paste cookies manually</summary>
+                <div style="font-size: 12px; color: var(--text-secondary); margin-top: 10px;">Open music.youtube.com in your browser and sign in. Then open DevTools &rarr; Network, click any request, and copy the <b>cookie</b> request header value here.</div>
+                <textarea id="yt-cookie-input" rows="3" placeholder="SID=...; HSID=...; SAPISID=..." style="width: 100%; margin-top: 10px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--text-secondary); background: var(--app-bg); color: var(--text-primary); font-size: 12px; resize: vertical;"></textarea>
+                <button class="btn" style="background: var(--app-bg); color: var(--text-primary); padding: 8px 16px; border-radius: 8px; cursor: pointer; margin-top: 10px;" onclick="window.ytPasteLogin()">Save cookies</button>
+            </details>
+        </div>
+    `;
+};
+
+window.ytRefreshAccount = async function() {
+    try {
+        const res = await fetch('/api/yt/status');
+        const data = await res.json();
+        const info = (data && data.data) || {};
+        window.ytAccount = info.loggedIn ? info : null;
+    } catch (e) {
+        window.ytAccount = null;
+    }
+    const card = document.getElementById('yt-account-card');
+    if (card) card.innerHTML = window.ytAccountCardHtml();
+    if (window.ytAccount && window.ytSyncFavorites) window.ytSyncFavorites();
+    return window.ytAccount;
+};
+
+window.ytOpenLogin = async function() {
+    if (!window.ytmusicAPI || !window.ytmusicAPI.openLogin) {
+        if (window.showToast) window.showToast('Login window unavailable');
+        return;
+    }
+    if (window.showToast) window.showToast('Opening YouTube Music sign-in...');
+    let result = null;
+    try {
+        result = await window.ytmusicAPI.openLogin();
+    } catch (e) { }
+    if (result && result.ok) {
+        if (window.showToast) window.showToast('Signed in to YouTube Music');
+    } else if (window.showToast) {
+        window.showToast('Not signed in');
+    }
+    await window.ytRefreshAccount();
+    if (window.location.hash.indexOf('likedsongs') >= 0 && window.renderLikedSongs) window.renderLikedSongs();
+};
+
+window.ytPasteLogin = async function() {
+    const input = document.getElementById('yt-cookie-input');
+    const value = input ? input.value : '';
+    if (!value.trim()) {
+        if (window.showToast) window.showToast('Paste cookies first');
+        return;
+    }
+    if (window.showToast) window.showToast('Checking cookies...');
+    try {
+        const res = await fetch('/api/yt/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ input: value })
+        });
+        const data = await res.json();
+        if (data && data.success) {
+            if (input) input.value = '';
+            if (window.showToast) window.showToast('Signed in to YouTube Music');
+        } else if (window.showToast) {
+            window.showToast('Login failed: ' + ((data && data.error) || 'unknown error'));
+        }
+    } catch (e) {
+        if (window.showToast) window.showToast('Login failed');
+    }
+    await window.ytRefreshAccount();
+};
+
+window.ytLogout = async function() {
+    try {
+        await fetch('/api/yt/logout', { method: 'POST' });
+    } catch (e) { }
+    if (window.showToast) window.showToast('Signed out of YouTube Music');
+    await window.ytRefreshAccount();
+    if (window.location.hash.indexOf('likedsongs') >= 0 && window.renderLikedSongs) window.renderLikedSongs();
+};
+
+window.renderSettingsAccount = async function() {
+    window.ytAccountCardMode = 'full';
+    await window.ytRefreshAccount();
+    await window.airLoadSettings(true);
+    const useLogin = window.airSetting('use_login_for_browse', true) !== false;
+    routerView.innerHTML = `
+        <div class="settings-page" style="padding: 20px 30px; max-width: 860px; margin: 0 auto; color: var(--text-primary);">
+            <div class="hero-header" style="background: none; border-bottom: 1px solid var(--border-color); margin-bottom: 20px; padding: 10px 0 20px 0;">
+                <div class="hero-info">
+                    <div class="hero-title" style="font-size: 32px; font-weight: 700; margin-bottom: 6px; display: flex; align-items: center; gap: 12px;"><i class="fas fa-user-circle" style="color: var(--accent-text);"></i> ${window.t('account')}</div>
+                    <div class="hero-meta" style="color: var(--text-secondary); font-size: 14px;">Manage your YouTube Music account, Discord presence and library sync</div>
+                </div>
+            </div>
+            <div class="acc-tabs">
+                <button id="accTab-google" class="acc-tab active" onclick="window.accSwitchTab('google')"><i class="fab fa-google"></i> Google</button>
+                <button id="accTab-discord" class="acc-tab" onclick="window.accSwitchTab('discord')">${window.airBrandIcon('discord', 15)} Discord</button>
+            </div>
+            <div id="accPanel-google">
+                <div id="yt-account-card">${window.ytAccountCardHtml()}</div>
+                <div class="air-card" style="margin-bottom: 24px;">
+                    <div class="air-card-title"><i class="fas fa-crown"></i> Browsing &amp; Sync</div>
+                    <div class="air-setting-row">
+                        <div class="air-setting-row-main">
+                            <div class="air-setting-title">Use login for browsing premium content</div>
+                            <div class="air-setting-desc">Signed in, the app browses publicly by default. Enable this to browse with your Google account so premium-only songs, albums and shelf rows appear too.</div>
+                        </div>
+                        <label class="air-switch"><input type="checkbox" id="airUseLoginSwitch" ${useLogin ? 'checked' : ''} onchange="window.setUseLoginForBrowse(this.checked)"><span></span></label>
+                    </div>
+                    <div class="air-setting-row">
+                        <div class="air-setting-row-main">
+                            <div class="air-setting-title">${window.t('advancedLogin')}</div>
+                            <div class="air-setting-desc">View the stored YouTube Music auth token. It stays masked until you reveal it; copy it when you need to move the login to another device.</div>
+                        </div>
+                        <button class="air-chip" onclick="window.airToggleTokenZone()"><i class="fas fa-key"></i> ${window.t('showToken')}</button>
+                    </div>
+                    <div id="air-token-zone" style="display:none; margin-top: 12px;"></div>
+                </div>
+                <div class="air-card" style="margin-bottom: 24px;">
+                    <div class="air-card-title"><i class="fas fa-list-music" style="color:#FF0000;"></i> Library Sync</div>
+                    <p style="color: var(--text-secondary); margin: 0 0 16px 0; font-size: 14px;">Everything stays global: songs you play are saved to your YouTube Music history, likes sync to your YouTube Music account, and your playlists, liked songs and subscriptions appear on the Playlists page. Signed out, everything is saved locally in the app.</p>
+                    <a href="#playlists" class="btn" style="background: var(--app-bg); color: var(--text-primary); padding: 10px 18px; border-radius: 8px; text-decoration: none; display: inline-flex; align-items: center; gap: 8px;"><i class="fas fa-arrow-right"></i> Open Playlists &amp; Library</a>
+                </div>
+            </div>
+            <div id="accPanel-discord" style="display:none;">
+                ${window.discordCardHtml()}
+            </div>
+            <div style="height: 40px;"></div>
+        </div>
+    `;
+    setTimeout(() => { window.discordCardInit(); }, 60);
 };
 
 window.discordLogin = function() {
@@ -482,6 +808,11 @@ window.discordRefreshState = async function() {
     try {
         const st = await window.discordAPI.getState();
         window.dlog('getState -> ' + JSON.stringify(st));
+        if (st && st.status) {
+            window.__discordStatus = st.status;
+            try { localStorage.setItem(RPC_STATUS_PREF, st.status); } catch (e) {}
+            window.discordApplyStatusUi();
+        }
         if (st && st.ok) {
             window.__discordUser = st.user;
             try { localStorage.setItem('discord_user', JSON.stringify(st.user)); } catch (e) {}
@@ -509,11 +840,14 @@ window.discordApplyUiState = function() {
     });
     const box = document.getElementById('btn-discord-rpc');
     if (box) box.checked = window.discordRpcEnabled;
+    const det = document.getElementById('btn-discord-details');
+    if (det) det.checked = window.discordUseDetails;
     if (st.loggedIn && st.user) {
         const el = document.getElementById('discord-status-box');
         if (el) el.textContent = 'Connected as ' + (st.user.name || st.user.username)
             + ' (@"' + st.user.username + '")';
     }
+    window.discordApplyStatusUi();
 };
 
 window.discordRenderState = function(loggedIn, user) {
@@ -602,6 +936,8 @@ const router = async (forceRefresh = false) => {
     const [route, id] = hash.substring(1).split('/');
     const cacheKey = route + (id ? '/' + id : '');
 
+    if (window.airScrollTop) window.airScrollTop();
+
     // Set route-home on body to style home components
     const isHome = (route === 'home');
     document.body.classList.toggle('route-home', isHome);
@@ -632,7 +968,7 @@ const router = async (forceRefresh = false) => {
     const scrollContainer = document.querySelector('.scroll-container');
     if (scrollContainer) scrollContainer.onscroll = null;
 
-    const noCacheRoutes = ['playlists', 'userplaylist', 'favorites', 'history', 'cached', 'stats', 'developer-news', 'developer_news', 'news'];
+    const noCacheRoutes = ['settings', 'playlists', 'likedsongs', 'userplaylist', 'favorites', 'history', 'cached', 'stats', 'developer-news', 'developer_news', 'news'];
     if (!forceRefresh && window.pageCache[cacheKey] && !noCacheRoutes.includes(route)) {
         routerView.innerHTML = window.pageCache[cacheKey];
         globalLoading.style.display = 'none';
@@ -669,6 +1005,7 @@ const router = async (forceRefresh = false) => {
         else if (route === 'albums') await renderSavedAlbums();
         else if (route === 'new-releases') await renderNewReleases();
         else if (route === 'library') await renderMobileLibrary();
+        else if (route === 'likedsongs') await renderLikedSongs();
         else if (route === 'playlists') await renderUserPlaylists();
         else if (route === 'cached') await renderCachedSongs();
         else if (route === 'userplaylist') await renderSingleUserPlaylist(id);
@@ -677,6 +1014,9 @@ const router = async (forceRefresh = false) => {
         else if (route === 'settings' && (id === 'developer-news' || id === 'developer_news' || id === 'news')) await renderDeveloperNews();
         else if (route === 'settings' && id === 'about') await renderSettingsAbout();
         else if (route === 'settings' && id === 'updates') await renderSettingsUpdates();
+        else if (route === 'settings' && id === 'account') await renderSettingsAccount();
+        else if (route === 'settings' && id === 'content') await renderSettingsContent();
+        else if (route === 'settings' && id === 'logs') await renderSettingsLogs();
         else if (route === 'settings' && (id === 'backup' || !id)) await renderSettingsBackup();
         else if (route === 'developer-news' || route === 'developer_news' || route === 'news') await renderDeveloperNews();
         else routerView.innerHTML = `<h2>Page Not Found</h2>`;
@@ -701,11 +1041,23 @@ const router = async (forceRefresh = false) => {
     }
 
     globalLoading.style.display = 'none';
+
+    // Pages always start from the top (scroll position never carries over).
+    if (window.requestAnimationFrame) requestAnimationFrame(() => window.airScrollTop()); else window.airScrollTop();
 };
 
-window.addEventListener('hashchange', router);
-window.addEventListener('offline', router);
-window.addEventListener('online', router);
+// Serialize route renders — a slow render must never overwrite a newer page.
+let __airRouterBusy = Promise.resolve();
+function airQueuedRouter(forceRefresh) {
+    const run = () => router(forceRefresh === true);
+    const next = __airRouterBusy.then(run, run);
+    __airRouterBusy = next.catch(() => { });
+    return next;
+}
+window.router = airQueuedRouter;
+window.addEventListener('hashchange', airQueuedRouter);
+window.addEventListener('offline', airQueuedRouter);
+window.addEventListener('online', airQueuedRouter);
 document.addEventListener('DOMContentLoaded', () => {
     
     const savedPanel = localStorage.getItem('panel_color');
@@ -732,7 +1084,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Delay router slightly to allow browser to fetch loader.json and fire load event
-    setTimeout(router, 100);
+    setTimeout(airQueuedRouter, 100);
 
     // Initialize News From Developers
     if (window.DeveloperNewsManager) {
@@ -741,6 +1093,21 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 const searchSuggestions = document.getElementById('searchSuggestions');
+
+let airSugIndex = -1;
+function airSugItems() {
+    return searchSuggestions ? [...searchSuggestions.querySelectorAll('.suggestion-item')] : [];
+}
+function airSugHighlight(idx) {
+    const items = airSugItems();
+    if (!items.length) { airSugIndex = -1; return; }
+    if (idx < 0) idx = items.length - 1;
+    if (idx >= items.length) idx = 0;
+    airSugIndex = idx;
+    items.forEach((el, i) => el.classList.toggle('active', i === idx));
+    const el = items[idx];
+    if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+}
 
 function saveSearchHistory(query) {
     if (!query) return;
@@ -751,26 +1118,62 @@ function saveSearchHistory(query) {
     localStorage.setItem('searchHistory', JSON.stringify(history));
 }
 
+window.airRemoveSearchHistory = function (index) {
+    let history = JSON.parse(localStorage.getItem('searchHistory') || '[]');
+    history.splice(index, 1);
+    localStorage.setItem('searchHistory', JSON.stringify(history));
+    renderSearchHistory();
+};
+
+window.airClearSearchHistory = function () {
+    localStorage.setItem('searchHistory', '[]');
+    searchSuggestions.style.display = 'none';
+};
+
 function renderSearchHistory() {
+    airSugIndex = -1;
     let history = JSON.parse(localStorage.getItem('searchHistory') || '[]');
     if (history.length === 0) {
         searchSuggestions.style.display = 'none';
         return;
     }
-    searchSuggestions.innerHTML = `<div style="padding: 8px 16px; font-size:12px; font-weight:bold; color:var(--text-secondary); text-transform:uppercase;">Recent Searches</div>` + history.map(q => `
-        <div class="suggestion-item" onclick="executeSearch('${q.replace(/'/g, "\\'")}')">
+    const esc = window.airEsc || ((s) => s);
+    searchSuggestions.innerHTML = `
+        <div class="suggestion-head">
+            <span>Recent Searches</span>
+            <button class="suggestion-clear" onclick="event.stopPropagation(); window.airClearSearchHistory()">Clear all</button>
+        </div>` + history.map((q, i) => `
+        <div class="suggestion-item" onclick="executeSearch('${window.airJsAttrEsc(q)}')">
             <i class="fas fa-history" style="color:var(--text-secondary); width: 40px; text-align:center;"></i>
             <div class="suggestion-info">
-                <div class="suggestion-title">${q}</div>
+                <div class="suggestion-title">${esc(q)}</div>
             </div>
+            <button class="suggestion-del" title="Remove from history" onclick="event.stopPropagation(); window.airRemoveSearchHistory(${i})"><i class="fas fa-times"></i></button>
         </div>
     `).join('');
     searchSuggestions.style.display = 'flex';
 }
 
+window.updateSearchClearBtn = function() {
+    const box = document.querySelector('.search-box');
+    if (box && searchInput) box.classList.toggle('has-text', searchInput.value.length > 0);
+};
+
+window.clearGlobalSearch = function() {
+    if (!searchInput) return;
+    searchInput.value = '';
+    if (searchSuggestions) {
+        searchSuggestions.style.display = 'none';
+        searchSuggestions.innerHTML = '';
+    }
+    window.updateSearchClearBtn();
+    searchInput.focus();
+};
+
 window.executeSearch = function(query) {
     searchInput.value = query;
     searchSuggestions.style.display = 'none';
+    window.updateSearchClearBtn();
     saveSearchHistory(query);
     window.location.hash = `#search/${encodeURIComponent(query)}`;
 };
@@ -778,6 +1181,8 @@ window.executeSearch = function(query) {
 let searchTimeout;
 searchInput.addEventListener('input', (e) => {
     const val = e.target.value.trim();
+    window.updateSearchClearBtn();
+    airSugIndex = -1;
     clearTimeout(searchTimeout);
     
     if (!val) {
@@ -792,7 +1197,7 @@ searchInput.addEventListener('input', (e) => {
             if (data.success && data.data && data.data.length > 0) {
                 const uniqueNames = data.data.slice(0, 5);
                 searchSuggestions.innerHTML = uniqueNames.map(name => `
-                    <div class="suggestion-item" onclick="executeSearch('${name.replace(/'/g, "\\'")}')">
+                    <div class="suggestion-item" onclick="executeSearch('${window.airJsAttrEsc(name)}')">
                         <i class="fas fa-search" style="color:var(--text-secondary); width: 40px; text-align:center;"></i>
                         <div class="suggestion-info">
                             <div class="suggestion-title">${name}</div>
@@ -826,6 +1231,25 @@ document.addEventListener('click', (e) => {
 searchInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter' && searchInput.value.trim() !== '') {
         executeSearch(searchInput.value.trim());
+    }
+});
+
+searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (searchSuggestions.style.display !== 'none') airSugHighlight(airSugIndex + 1);
+    } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (searchSuggestions.style.display !== 'none') airSugHighlight(airSugIndex - 1);
+    } else if (e.key === 'Enter') {
+        const items = airSugItems();
+        if (searchSuggestions.style.display !== 'none' && airSugIndex >= 0 && items[airSugIndex]) {
+            e.preventDefault();
+            items[airSugIndex].click();
+        }
+    } else if (e.key === 'Escape') {
+        searchSuggestions.style.display = 'none';
+        airSugIndex = -1;
     }
 });
 
@@ -906,10 +1330,12 @@ async function renderHome() {
         // Parallel fetch for home feed and similar recommendations
         const homePromise = fetch('/api/home').then(r => r.json()).catch(() => ({ success: false }));
         let similarPromise = Promise.resolve({ success: false, data: [] });
+        const forceSim = window.__airForceSimilar ? '&refresh=1' : '';
+        window.__airForceSimilar = false;
         if (topArtist && (topArtist.id || topArtist.name)) {
             const url = topArtist.id 
-                ? `/api/similar_to?artist_id=${topArtist.id}`
-                : `/api/similar_to?artist_name=${encodeURIComponent(topArtist.name)}`;
+                ? `/api/similar_to?artist_id=${topArtist.id}${forceSim}`
+                : `/api/similar_to?artist_name=${encodeURIComponent(topArtist.name)}${forceSim}`;
             similarPromise = fetch(url).then(r => r.json()).catch(() => ({ success: false, data: [] }));
         }
 
@@ -922,7 +1348,12 @@ async function renderHome() {
             topArtist = homeData.popular_artists[0];
         }
 
-        let html = `<div class="home-container">`;
+        let html = `<div class="home-container">
+        <div class="home-refresh-row">
+            <button class="home-refresh-btn" onclick="window.airRefreshHomeFeed(this)" title="Refresh feed">
+                <i class="fas fa-sync-alt"></i> Refresh
+            </button>
+        </div>`;
 
         // ==========================================
         // 1. TOP QUICK ACTION CHIPS ROW (Android Airbeats style)
@@ -1024,6 +1455,8 @@ async function renderHome() {
             });
 
             html += `</div></div>`;
+            // Warm the first 3 quick-pick streams so playback starts instantly.
+            window.airPrefetchIds(combinedQuickPicks.map((s) => s.id));
         }
 
         // ==========================================
@@ -1535,7 +1968,7 @@ async function renderHome() {
         console.error('Home render error', e);
         routerView.innerHTML = `
         <div style="text-align: center; padding: 60px 20px; color: var(--text-secondary);">
-            <i class="fas fa-exclamation-triangle" style="font-size: 48px; color: var(--accent); margin-bottom: 20px;"></i>
+            <i class="fas fa-exclamation-triangle" style="font-size: 48px; color: var(--accent-text); margin-bottom: 20px;"></i>
             <h2 style="color: var(--text-primary); margin-bottom: 10px;">Failed to load Home screen</h2>
             <p>Please check your connection or restart the server.</p>
             <button class="btn-primary" onclick="renderHome()" style="margin: 20px auto 0 auto;">Retry</button>
@@ -1601,6 +2034,65 @@ async function loadMoreBrowse() {
     isFetchingBrowse = false;
 }
 
+window.searchSource = 'ytm';
+window.searchSourceChipHtml = function() {
+    const chip = (id, label, iconHtml) => `<button class="yt-chip${window.searchSource === id ? ' is-on' : ''}" onclick="window.setSearchSource('${id}')">${iconHtml} ${label}</button>`;
+    return chip('ytm', 'YouTube Music', window.airBrandIcon('youtube', 13)) + chip('saavn', 'JioSaavn', '<i class="fas fa-music"></i>');
+};
+
+window.setSearchSource = function(source) {
+    if (window.searchSource === source) return;
+    window.searchSource = source;
+    if (window.__lastSearchQuery && typeof renderSearch === 'function') renderSearch(window.__lastSearchQuery);
+};
+
+window.renderSaavnSearch = async function(query) {
+    globalLoading.style.display = 'flex';
+    const res = await fetch(`/api/saavn/search?query=${encodeURIComponent(query)}&limit=40`).then(r => r.json()).catch(() => ({}));
+    globalLoading.style.display = 'none';
+    const songs = (res && res.data) || [];
+    let html = `<div class="back-btn" onclick="history.back()" title="Go Back"><i class="fas fa-arrow-left"></i></div>
+    <h2 class="section-title">JioSaavn Results for "${decodeURIComponent(query)}"</h2>
+    <div style="display: flex; gap: 8px; margin: 0 0 18px 0;">${window.searchSourceChipHtml()}</div>`;
+    if (songs.length) {
+        html += `<table class="tracklist" style="margin-bottom:40px;">`;
+        songs.forEach((song, i) => {
+            window.allTracks[song.id] = song;
+            const isFav = favoriteSongs.some(s => s.id === song.id);
+            const artists = ((song.artists && song.artists.primary) || []).map(a => a.name).filter(Boolean).join(', ');
+            html += `
+            <tr class="track-row">
+                <td class="track-num">
+                    <span class="track-num-txt">${i+1}</span>
+                    <i class="fas fa-play track-play-icon" onclick="playSingleTrack('${song.id}')"></i>
+                </td>
+                <td>
+                    <div class="track-info-cell">
+                        <img src="${getHighestQualityImage(song.image)}" class="track-thumb">
+                        <div>
+                            <div class="track-title">${song.name || song.title}</div>
+                            <div class="track-artist">${artists}</div>
+                        </div>
+                    </div>
+                </td>
+                <td class="track-duration">${formatTime(song.duration)}</td>
+                <td style="width: 80px; text-align: center;">
+                    <div style="display: flex; align-items: center; justify-content: center; gap: 15px;" onclick="event.stopPropagation()">
+                        <i class="${isFav ? 'fas' : 'far'} fa-heart" 
+                           style="color:${isFav ? 'var(--accent)' : 'var(--text-secondary)'}; cursor:pointer; font-size: 16px; padding: 12px; border-radius: 50%;" 
+                           onclick="window.toggleHeart(event, '${song.id}')" title="Like"></i>
+                        ${window.getPlaylistIconHtml(song.id)}
+                    </div>
+                </td>
+            </tr>`;
+        });
+        html += `</table>`;
+    } else {
+        html += `<h3 style="color: var(--text-secondary);">No results found</h3>`;
+    }
+    routerView.innerHTML = html;
+};
+
 async function renderSearch(query) {
     const scrollContainer = document.querySelector('.scroll-container');
     scrollContainer.onscroll = null;
@@ -1638,6 +2130,9 @@ async function renderSearch(query) {
         };
         return;
     }
+
+    window.__lastSearchQuery = query;
+    if (window.searchSource === 'saavn') return window.renderSaavnSearch(query);
     
     // Fetch 40 items per category for "full" search
     const [songsRes, albumsRes, artistsRes, playlistsRes] = await Promise.all([
@@ -1648,7 +2143,8 @@ async function renderSearch(query) {
     ]);
     
     let html = `<div class="back-btn" onclick="history.back()" title="Go Back"><i class="fas fa-arrow-left"></i></div>
-    <h2 class="section-title">Search Results for "${decodeURIComponent(query)}"</h2>`;
+    <h2 class="section-title">Search Results for "${decodeURIComponent(query)}"</h2>
+    <div style="display: flex; gap: 8px; margin: 0 0 18px 0;">${window.searchSourceChipHtml ? window.searchSourceChipHtml() : ''}</div>`;
 
     const songs = songsRes.data;
     if (songs && songs.results && songs.results.length > 0) {
@@ -1681,6 +2177,8 @@ async function renderSearch(query) {
             </tr>`;
         });
         html += `</table>`;
+        // Warm the first 3 result streams for instant playback on click.
+        window.airPrefetchIds(songs.results.map((s) => s.id));
     }
 
     const artists = artistsRes.data;
@@ -1908,9 +2406,9 @@ async function renderAlbum(id) {
         let savedAlbums = JSON.parse(localStorage.getItem('saved_albums') || '{}');
         let isSaved = !!savedAlbums[album.id];
         let iconClass = isSaved ? 'fas fa-check' : 'fas fa-plus';
-        let colorStyle = isSaved ? 'color: var(--accent);' : '';
+        let colorStyle = isSaved ? 'color: var(--accent-text);' : '';
         let artistName = album.artists?.primary?.map(a => a.name).join(', ') || 'Unknown Artist';
-        return `<button class="icon-btn" onclick="toggleSaveAlbum('${album.id}', this, '${album.name.replace(/'/g, "\'")}', '${getHighestQualityImage(album.image)}', '${artistName.replace(/'/g, "\'")}')">
+        return `<button class="icon-btn icon-btn-surface" onclick="toggleSaveAlbum('${album.id}', this, '${album.name.replace(/'/g, "\'")}', '${getHighestQualityImage(album.image)}', '${artistName.replace(/'/g, "\'")}')">
             <i class="${iconClass}" style="${colorStyle}"></i>
         </button>`;
         })()}
@@ -1960,6 +2458,11 @@ async function renderAlbum(id) {
 // ==========================================
 const audio = document.getElementById('audioElement');
 audio.onerror = (e) => {
+    if (window.ytHandleStreamError && window.ytHandleStreamError()) return;
+    if (audio.error && audio.error.code >= 3 && window.showToast) {
+        window.showToast('Could not play this song');
+        return;
+    }
     alert('Audio Error: ' + (audio.error ? audio.error.code + ' ' + audio.error.message : 'Unknown error'));
 };
 const playPauseBtn = document.getElementById('playPauseBtn');
@@ -2106,6 +2609,7 @@ async function loadCurrentTrack() {
     if (currentQueue.length < 100) setTimeout(() => window.generateSmartQueue(), 1000);
     let track = currentQueue[currentIndex];
     if (!track) return;
+    if (window.ytTrackEnded) window.ytTrackEnded();
     
     // Normalize metadata
     if (!track.name && track.title) track.name = track.title;
@@ -2115,6 +2619,10 @@ async function loadCurrentTrack() {
     }
     const trackNameStr = (track.name || track.title || 'Unknown Song').toString();
     window.allTracks[track.id] = track;
+
+    // YT integration: start the recording timer and prefetch immediately (no scrobble-threshold wait)
+    if (window.ytTrackStarted) window.ytTrackStarted(track);
+    if (window.ytPrefetchAhead) window.ytPrefetchAhead(2);
     
     // UI Update
     const miniPlayerName = trackNameStr.split(' ').slice(0, 3).join(' ');
@@ -2439,6 +2947,7 @@ audio.addEventListener('timeupdate', () => {
 audio.addEventListener('ended', () => {
     // Record track completion in StatsEngine
     const finishedTrack = window.getCurrentTrack ? window.getCurrentTrack() : null;
+    if (window.ytTrackEnded) window.ytTrackEnded();
     if (finishedTrack && window.StatsEngine && window.StatsEngine.recordListenEvent) {
         const fullMs = (audio.duration && audio.duration > 0) ? Math.round(audio.duration * 1000) : 180000;
         window.StatsEngine.recordListenEvent(finishedTrack, fullMs, true);
@@ -2477,8 +2986,10 @@ audio.addEventListener('ended', () => {
 
 progressContainer.addEventListener('click', (e) => {
     const rect = progressContainer.getBoundingClientRect();
-    const percent = (e.clientX - rect.left) / rect.width;
-    audio.currentTime = percent * audio.duration;
+    if (!rect.width || !isFinite(audio.duration) || audio.duration <= 0) return;
+    const percent = Math.min(Math.max((e.clientX - rect.left) / rect.width, 0), 1);
+    const target = percent * audio.duration;
+    if (isFinite(target)) audio.currentTime = target;
 });
 
 // Queue UI
@@ -2565,15 +3076,16 @@ async function renderFavorites() {
         <div class="hero-info">
             <div class="hero-type">PLAYLIST</div>
             <div class="hero-title">Favorite Songs</div>
-            <div class="hero-meta">${favoriteSongs.length} songs</div>
+            <div class="hero-meta">${favoriteSongs.length} songs${(window.ytLoggedIn && window.ytLoggedIn()) ? ' &middot; Synced with YouTube Music' : ''}</div>
             <div class="action-buttons">
                 <button class="btn-primary" onclick="playList(window.currentRenderedTracks)">PLAY</button>
             </div>
         </div>
     </div>
-    <table class="tracklist">`;
+    <table class="tracklist favorites-list">`;
     
     window.currentRenderedTracks = favoriteSongs;
+    if (window.ytLoggedIn && window.ytLoggedIn() && window.ytSyncFavorites) window.ytSyncFavorites();
 
     if(favoriteSongs && favoriteSongs.length > 0) {
         favoriteSongs.forEach((song, i) => {
@@ -2979,94 +3491,125 @@ window.addToPlaylist = function(playlistId) {
 
 window.createPlaylistFromScreen = function() {
     const input = document.getElementById('screenPlaylistInput');
-    const name = input.value.trim();
+    const name = input ? input.value.trim() : '';
     if (!name) return;
-    
-    const playlists = getPlaylists();
-    const newPlaylist = {
-        id: 'pl_' + Date.now(),
-        name: name,
-        songs: []
-    };
-    playlists.push(newPlaylist);
-    savePlaylists(playlists);
-    
-    // Refresh screen
+
+    const syncBox = document.getElementById('syncYtPlaylist');
+    const wantSync = !!(syncBox && syncBox.checked) && window.ytLoggedIn && window.ytLoggedIn();
+
+    if (wantSync) {
+        const btn = document.getElementById('createPlaylistBtn');
+        if (btn) { btn.disabled = true; btn.innerHTML = 'Creating\u2026'; }
+        fetch('/api/yt/create_playlist', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: name }),
+        }).then((r) => r.json()).then((res) => {
+            if (res && res.success) {
+                airToast('Playlist created on YouTube Music');
+                window.__ytMirrorLast = 0;
+                window.ytMirrorPlaylists(null, true).then(() => renderUserPlaylists());
+            } else {
+                airToast('YouTube create failed — saved locally');
+                window.airCreateLocalPlaylist(name);
+                renderUserPlaylists();
+            }
+        }).catch(() => {
+            airToast('YouTube create failed — saved locally');
+            window.airCreateLocalPlaylist(name);
+            renderUserPlaylists();
+        });
+        return;
+    }
+
+    window.airCreateLocalPlaylist(name);
     renderUserPlaylists();
 };
 
-async function renderUserPlaylists() {
-    
-    routerView.innerHTML = `<div class="loader"></div>`;
-    
+window.airCreateLocalPlaylist = function(name) {
     const playlists = getPlaylists();
-    
+    playlists.push({ id: 'pl_' + Date.now(), name: name, songs: [] });
+    savePlaylists(playlists);
+};
+
+async function renderUserPlaylists() {
+    routerView.innerHTML = window.airDotsHtml(window.t('playlists') + '\u2026');
+
+    const loggedIn = !!(window.ytLoggedIn && window.ytLoggedIn());
+    if (loggedIn && !window.ytAccount) await window.ytRefreshAccount();
+    const loggedInNow = !!(window.ytLoggedIn && window.ytLoggedIn());
+
+    let ytPlaylists = [];
+    let ytFailed = false;
+    if (loggedInNow) {
+        try {
+            const res = await fetch('/api/library/playlists').then((r) => r.json());
+            ytPlaylists = (res && res.data) || [];
+        } catch (e) { ytFailed = true; }
+        if (!ytFailed && window.ytMirrorPlaylists) window.ytMirrorPlaylists(ytPlaylists, true);
+    }
+
+    const localPlaylists = getPlaylists();
+    const localOnly = localPlaylists.filter((pl) => !pl.ytId);
+    const cards = [];
+    if (loggedInNow) {
+        ytPlaylists.forEach((yt) => cards.push({ kind: 'yt', item: yt }));
+        localOnly.forEach((pl) => cards.push({ kind: 'local', item: pl }));
+    } else {
+        localPlaylists.forEach((pl) => cards.push({ kind: 'local', item: pl }));
+    }
+
     let html = `
         <div class="header-section" style="margin-bottom: 20px;">
             <h1 style="font-size: 2.5rem; font-weight: 700; margin: 0 0 10px 0; color: var(--text-primary);">Your Playlists</h1>
-            <p style="color: var(--text-secondary); margin: 0;">${playlists.length} playlists</p>
+            <p style="color: var(--text-secondary); margin: 0;">${loggedInNow
+                ? (ytPlaylists.length + ' on YouTube Music' + (localOnly.length ? ' &middot; ' + localOnly.length + ' local' : ''))
+                : (localPlaylists.length + ' playlists &middot; saved on this device')}</p>
         </div>
         
-        <div class="create-playlist-section" style="border: none; padding-top: 0; margin-bottom: 30px; max-width: 400px;">
+        <div class="create-playlist-section" style="border: none; padding-top: 0; margin-bottom: 30px; max-width: 460px;">
             <input type="text" id="screenPlaylistInput" class="create-playlist-input" placeholder="New Playlist Name" onkeypress="if(event.key === 'Enter') window.createPlaylistFromScreen()">
-            <button class="create-playlist-btn" onclick="window.createPlaylistFromScreen()">Create</button>
+            <button id="createPlaylistBtn" class="create-playlist-btn" onclick="window.createPlaylistFromScreen()">Create</button>
+            ${loggedInNow ? `<label class="air-inline-check" title="Also create this playlist on YouTube Music"><input type="checkbox" id="syncYtPlaylist"> ${window.t('syncYoutube')}</label>` : ''}
         </div>
     `;
     
-    if (playlists.length === 0) {
-        html += `<div style="text-align: center; padding: 50px; color: var(--text-secondary);">You haven't created any playlists yet. Use the Create button above to start!</div>`;
+    if (cards.length === 0) {
+        if (loggedInNow) {
+            html += ytFailed
+                ? `<div style="text-align: center; padding: 40px; color: var(--text-secondary);">Could not load your YouTube Music playlists right now. Check your connection and try again.</div>`
+                : `<div style="text-align: center; padding: 40px; color: var(--text-secondary);">No playlists on your YouTube Music account yet. Create one above and tick "Sync with YouTube" to push it to your account.</div>`;
+        } else {
+            html += `<div style="text-align: center; padding: 30px 50px; color: var(--text-secondary);">You haven't created any playlists yet. Use the Create button above to start!</div>`;
+            html += window.ytPremiumPromptHtml();
+        }
     } else {
         html += `<div class="grid-container">`;
-        playlists.forEach(pl => {
-            
-            let thumbsHtml = '';
-            if (pl.image) {
-                thumbsHtml = `<img src="${getHighestQualityImage(pl.image)}" style="width:100%; height:100%; object-fit:cover; border-radius: 8px;">`;
-            } else if (pl.songs.length > 0) {
-                let thumbs = pl.images ? [...pl.images].slice(0, 3) : [];
-                if (thumbs.length < 3) {
-                    for (let i=0; i<pl.songs.length && thumbs.length<3; i++) {
-                        const sid = pl.songs[i];
-                    let track = window.allTracks[sid];
-                    if (!track && window.currentRenderedTracks) track = window.currentRenderedTracks.find(t=>t.id===sid);
-                    if (!track && window.favoriteSongs) track = window.favoriteSongs.find(t=>t.id===sid);
-                    if (!track) {
-                        let history = JSON.parse(localStorage.getItem('playHistory') || '[]');
-                        track = history.find(t=>t.id===sid);
-                    }
-                    if (track && track.image && !thumbs.includes(track.image)) {
-                        thumbs.push(track.image);
-                    }
-                }
-                }
-                
-                if (thumbs.length > 0) {
-                    let revThumbs = [...thumbs].reverse();
-                    thumbsHtml = revThumbs.map(img => `<img src="${getHighestQualityImage(img)}" class="stacked-thumb">`).join('');
-                }
-            }
-            
-            if (!thumbsHtml) {
-                thumbsHtml = `<div style="width:100%; height:100%; background: var(--primary-color); display:flex; align-items:center; justify-content:center; border-radius: 8px;"><i class="fas fa-music" style="font-size:3rem; color:#000;"></i></div>`;
-            }
-
-            html += `
-                <div class="card playlist-card" onclick="window.location.hash='#userplaylist/${pl.id}'" style="cursor: pointer;">
-                    <div class="card-img-wrapper" style="background: transparent;">
-                        ${thumbsHtml}
+        cards.forEach((card) => {
+            if (card.kind === 'yt') {
+                const item = card.item || {};
+                const label = String(item.name || item.title || 'Playlist').replace(/"/g, '&quot;');
+                html += `
+                <div class="card playlist-card" onclick="window.location.hash='#playlist/${item.id}'" style="cursor: pointer;">
+                    <div class="card-img-wrapper">
+                        <img src="${getHighestQualityImage(item.image) || 'https://via.placeholder.com/150'}" style="width:100%; height:100%; object-fit:cover; border-radius: 8px;">
                     </div>
                     <div class="card-info">
-                        <div class="card-title" title="${pl.name.replace(/"/g, '&quot;')}">${pl.name}</div>
-                        <p style="margin: 0; color: var(--text-secondary); font-size: 0.9rem;">${pl.songs.length} songs</p>
+                        <div class="card-title" title="${label}">${label}</div>
+                        <p style="margin: 0; color: var(--text-secondary); font-size: 0.9rem;">${item.subtitle || 'YouTube Music'}</p>
                     </div>
-                </div>
-            `;
-
+                </div>`;
+            } else {
+                html += window.airLocalPlaylistCardHtml(card.item, !loggedInNow);
+            }
         });
         html += `</div>`;
+        if (!loggedInNow) html += window.ytPremiumPromptHtml(true);
     }
     
+    html += `<div id="yt-library-sections"></div>`;
     routerView.innerHTML = html;
+    if (window.ytRenderLibrarySections) window.ytRenderLibrarySections(true);
 }
 
 async function renderSingleUserPlaylist(id) {
@@ -3132,7 +3675,7 @@ async function renderSingleUserPlaylist(id) {
                         <div class="hero-meta">${data.data.length} songs &bull; Created by You</div>
                         <div class="action-buttons" style="margin-top:20px;">
                             <button class="btn-primary" onclick="playList(${JSON.stringify(data.data).replace(/"/g, '&quot;')})">PLAY ALL</button>
-                            <button class="icon-btn" onclick="if(confirm('Are you sure you want to delete this playlist?')) { const p = getPlaylists().filter(x=>x.id!=='${pl.id}'); savePlaylists(p); window.location.hash='#playlists'; }"><i class="fas fa-trash"></i></button>
+                            <button class="icon-btn icon-btn-surface" onclick="if(confirm('Are you sure you want to delete this playlist?')) { const p = getPlaylists().filter(x=>x.id!=='${pl.id}'); savePlaylists(p); window.location.hash='#playlists'; }"><i class="fas fa-trash"></i></button>
                         </div>
                     </div>
                 </div>
@@ -3206,11 +3749,12 @@ window.updateSidebarState = function(isSettings) {
 }
 
 async function renderSettingsBackup() {
+    window.ytAccountCardMode = 'compact';
     routerView.innerHTML = `
         <div class="settings-page" style="padding: 20px 30px; max-width: 800px; margin: 0 auto; color: var(--text-primary);">
             <div class="hero-header" style="background: none; border-bottom: 1px solid var(--border-color); margin-bottom: 30px; padding: 10px 0 20px 0;">
                 <div class="hero-info">
-                    <div class="hero-title" style="font-size: 32px; font-weight: 700; margin-bottom: 6px; display: flex; align-items: center; gap: 12px;"><i class="fas fa-database" style="color: var(--accent);"></i> Backup & Restore</div>
+                    <div class="hero-title" style="font-size: 32px; font-weight: 700; margin-bottom: 6px; display: flex; align-items: center; gap: 12px;"><i class="fas fa-database" style="color: var(--accent-text);"></i> Backup & Restore</div>
                     <div class="hero-meta" style="color: var(--text-secondary); font-size: 14px;">Import your library from the AirBeats Android app (.backup) or export your desktop library</div>
                 </div>
             </div>
@@ -3405,7 +3949,7 @@ async function renderSettingsAppearance() {
     routerView.innerHTML = `
     <div class="hero-header" style="background: none; border-bottom: 1px solid var(--border-color); margin-bottom: 20px; padding: 20px;">
         <div class="hero-info">
-            <div class="hero-title" style="font-size: 32px; font-weight: 700; margin-bottom: 6px; display: flex; align-items: center; gap: 12px;"><i class="fas fa-palette" style="color: var(--accent);"></i> Appearance</div>
+            <div class="hero-title" style="font-size: 32px; font-weight: 700; margin-bottom: 6px; display: flex; align-items: center; gap: 12px;"><i class="fas fa-palette" style="color: var(--accent-text);"></i> Appearance</div>
             <div class="hero-meta" style="color: var(--text-secondary); font-size: 14px;">Customize your Airbeats experience</div>
         </div>
     </div>
@@ -3440,7 +3984,7 @@ async function renderSettingsAppearance() {
   
           <div style="background: var(--search-bg); padding: 24px; border-radius: 12px; margin-bottom: 24px;">
               <h3 style="margin-top: 0; font-size: 20px;">Dynamic Island</h3>
-              <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 14px;">Enable or disable the interactive mini-player overlay at the top of your screen.</p>
+              <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 14px;">Enable or disable the interactive mini-player overlay at the top of your screen, and tune how it looks.</p>
               
               <div style="display: flex; gap: 20px;">
                   <button id="btn-island-on" class="btn" style="background: var(--app-bg); color: var(--text-primary); padding: 12px 24px; border-radius: 8px; cursor: pointer;" onclick="setDynamicIsland(true)">
@@ -3450,55 +3994,35 @@ async function renderSettingsAppearance() {
                       <i class="fas fa-eye-slash"></i> Disabled
                   </button>
               </div>
-          </div>
 
-          <div style="background: var(--search-bg); padding: 24px; border-radius: 12px; margin-bottom: 24px;">
-              <h3 style="margin-top: 0; font-size: 20px;"><i class="fab fa-discord" style="color: #5865F2;"></i> Discord Rich Presence</h3>
-              <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 14px;">
-                  Show what you're listening to on your Discord profile. You log in here, inside AirBeats — the Discord desktop app is not needed.
-              </p>
-
-              <div id="discord-status-box" style="margin-bottom: 16px; font-size: 14px; color: var(--text-secondary);"></div>
-
-              <style>
-                  .m3-switch{position:relative;display:inline-flex;align-items:center;width:52px;height:32px;flex:none;cursor:pointer}
-                  .m3-switch input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}
-                  .m3-track{position:absolute;inset:0;border-radius:16px;background:#9e9e9e;transition:background .2s ease}
-                  .m3-knob{position:absolute;top:8px;left:8px;width:16px;height:16px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;color:#fff;font-size:0;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:left .22s cubic-bezier(.2,0,0,1),top .22s cubic-bezier(.2,0,0,1),width .22s cubic-bezier(.2,0,0,1),height .22s cubic-bezier(.2,0,0,1),font-size .22s ease}
-                  .m3-knob i{line-height:1}
-                  .m3-switch:hover .m3-track{background:#868686}
-                  .m3-switch input:checked ~ .m3-track{background:var(--accent)}
-                  .m3-switch input:checked:hover ~ .m3-track{filter:brightness(1.08)}
-                  .m3-switch input:checked ~ .m3-track .m3-knob{top:4px;left:24px;width:24px;height:24px;font-size:13px}
-              </style>
-
-              <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: center;">
-                  <button id="btn-discord-login" class="btn" style="background: #5865F2; color: #fff; padding: 12px 24px; border-radius: 8px; cursor: pointer;" onclick="window.discordLogin()">
-                      <i class="fab fa-discord"></i> Login with Discord
-                  </button>
-                  <button id="btn-discord-logout" class="btn" style="background: var(--app-bg); color: var(--text-primary); padding: 12px 24px; border-radius: 8px; cursor: pointer; display: none;" onclick="window.discordLogout()">
-                      <i class="fas fa-right-from-bracket"></i> Logout
-                  </button>
-
-                  <div style="display: inline-flex; align-items: center; gap: 10px; margin-left: auto; user-select: none;">
-                      <span style="font-size: 14px; color: var(--text-secondary);">Rich Presence</span>
-                      <label class="m3-switch" title="Discord Rich Presence on / off">
-                          <input type="checkbox" id="btn-discord-rpc" onchange="window.discordToggleRpc(this)">
-                          <span class="m3-track"><span class="m3-knob"><i class="fab fa-discord"></i></span></span>
-                      </label>
+              <div class="air-opt-group" style="margin-top: 22px;">
+                  <div class="air-opt-label">Island size</div>
+                  <div class="air-chip-group">
+                      <button class="air-chip air-island-size" data-size="small" onclick="window.islandSetOption('size','small')"><i class="fas fa-compress"></i> Small</button>
+                      <button class="air-chip air-island-size" data-size="medium" onclick="window.islandSetOption('size','medium')">Default</button>
+                      <button class="air-chip air-island-size" data-size="large" onclick="window.islandSetOption('size','large')"><i class="fas fa-expand"></i> Large</button>
                   </div>
               </div>
 
-              <details style="margin-top: 16px;">
-                  <summary style="cursor: pointer; color: var(--text-secondary); font-size: 13px;">Login not working? Paste your token manually</summary>
-                  <div style="display: flex; gap: 10px; margin-top: 12px;">
-                      <input id="discord-token-input" type="password" placeholder="Discord token" style="flex: 1; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--text-secondary); background: var(--app-bg); color: var(--text-primary);">
-                      <button class="btn" style="background: #5865F2; color: #fff; padding: 10px 18px; border-radius: 8px; cursor: pointer;" onclick="window.discordPasteToken()">Save</button>
+              <div class="air-opt-group">
+                  <div class="air-opt-label">Position</div>
+                  <div class="air-chip-group">
+                      <button class="air-chip air-island-pos" data-pos="left" onclick="window.islandSetOption('position','left')">Top Left</button>
+                      <button class="air-chip air-island-pos" data-pos="center" onclick="window.islandSetOption('position','center')">Top Center</button>
+                      <button class="air-chip air-island-pos" data-pos="right" onclick="window.islandSetOption('position','right')">Top Right</button>
                   </div>
-                  <button class="btn" style="background: var(--app-bg); color: var(--text-primary); padding: 8px 14px; border-radius: 6px; cursor: pointer; margin-top: 10px; font-size: 12px;" onclick="window.discordDebugDump()">
-                      <i class="fas fa-bug"></i> Debug: dump login page storage
-                  </button>
-              </details>
+              </div>
+
+              <div class="air-opt-group">
+                  <div class="air-opt-label">Background</div>
+                  <div class="air-chip-group">
+                      <button class="air-chip air-island-bg" data-bg="black" onclick="window.islandSetOption('bg','black')">Black</button>
+                      <button class="air-chip air-island-bg" data-bg="dark" onclick="window.islandSetOption('bg','dark')">Dark Grey</button>
+                      <button class="air-chip air-island-bg" data-bg="accent" onclick="window.islandSetOption('bg','accent')">Accent</button>
+                      <button class="air-chip air-island-bg" data-bg="glass" onclick="window.islandSetOption('bg','glass')">Glass</button>
+                  </div>
+              </div>
+              <div id="airIslandNote" style="font-size: 12px; color: var(--text-secondary); margin-top: 12px;"></div>
           </div>
 
           <div style="background: var(--search-bg); padding: 24px; border-radius: 12px; margin-bottom: 24px;">
@@ -3513,7 +4037,7 @@ async function renderSettingsAppearance() {
           </div>
 
           <div style="background: var(--search-bg); padding: 24px; border-radius: 12px; margin-bottom: 24px;">
-              <h3 style="margin-top: 0; font-size: 20px;"><i class="fas fa-moon" style="color: var(--accent);"></i> Always On Display</h3>
+              <h3 style="margin-top: 0; font-size: 20px;"><i class="fas fa-moon" style="color: var(--accent-text);"></i> Always On Display</h3>
               <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 14px;">Transform your desktop into an ambient OLED music display with custom styles, artwork shapes, and clock.</p>
               
               <div style="display: flex; gap: 15px; flex-wrap: wrap;">
@@ -3528,18 +4052,108 @@ async function renderSettingsAppearance() {
   
           <div style="background: var(--search-bg); padding: 24px; border-radius: 12px; margin-bottom: 24px;">
               <h3 style="margin-top: 0; font-size: 20px;">Accent Color</h3>
-            <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 14px;">Customize the accent color used for active elements and buttons.</p>
+            <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 14px;">Customize the accent color used for active elements, buttons and loading dots.</p>
             
             <div style="display: flex; gap: 15px; flex-wrap: wrap; user-select: none; -webkit-user-select: none;">
-                <button type="button" class="color-swatch" style="background: #ff0055;" onclick="setAccentColor('#ff0055')" title="Rose"></button>
-                <button type="button" class="color-swatch" style="background: #1db954;" onclick="setAccentColor('#1db954')" title="Spotify Green"></button>
-                <button type="button" class="color-swatch" style="background: #1d4ed8;" onclick="setAccentColor('#1d4ed8')" title="Blue"></button>
-                <button type="button" class="color-swatch" style="background: #8b5cf6;" onclick="setAccentColor('#8b5cf6')" title="Purple"></button>
-                <button type="button" class="color-swatch" style="background: #f59e0b;" onclick="setAccentColor('#f59e0b')" title="Amber"></button>
-                <button type="button" class="color-swatch" style="background: #ec4899;" onclick="setAccentColor('#ec4899')" title="Pink"></button>
-                <button type="button" class="color-swatch" style="background: #06b6d4;" onclick="setAccentColor('#06b6d4')" title="Cyan"></button>
-                <button type="button" class="color-swatch" style="background: #84cc16;" onclick="setAccentColor('#84cc16')" title="Lime"></button>
-                <button type="button" class="color-swatch" style="background: #ef4444;" onclick="setAccentColor('#ef4444')" title="Red"></button>
+                <button type="button" class="color-swatch air-swatch" data-color="#ff0055" style="background: #ff0055;" onclick="setAccentColor('#ff0055')" title="Rose"></button>
+                <button type="button" class="color-swatch air-swatch" data-color="#1db954" style="background: #1db954;" onclick="setAccentColor('#1db954')" title="Green"></button>
+                <button type="button" class="color-swatch air-swatch" data-color="#1d4ed8" style="background: #1d4ed8;" onclick="setAccentColor('#1d4ed8')" title="Blue"></button>
+                <button type="button" class="color-swatch air-swatch" data-color="#8b5cf6" style="background: #8b5cf6;" onclick="setAccentColor('#8b5cf6')" title="Purple"></button>
+                <button type="button" class="color-swatch air-swatch" data-color="#f59e0b" style="background: #f59e0b;" onclick="setAccentColor('#f59e0b')" title="Amber"></button>
+                <button type="button" class="color-swatch air-swatch" data-color="#ec4899" style="background: #ec4899;" onclick="setAccentColor('#ec4899')" title="Pink"></button>
+                <button type="button" class="color-swatch air-swatch" data-color="#06b6d4" style="background: #06b6d4;" onclick="setAccentColor('#06b6d4')" title="Cyan"></button>
+                <button type="button" class="color-swatch air-swatch" data-color="#84cc16" style="background: #84cc16;" onclick="setAccentColor('#84cc16')" title="Lime"></button>
+                <button type="button" class="color-swatch air-swatch" data-color="#ef4444" style="background: #ef4444;" onclick="setAccentColor('#ef4444')" title="Red"></button>
+                <button type="button" class="color-swatch air-swatch" data-color="#c6e355" style="background: #c6e355;" onclick="setAccentColor('#c6e355')" title="Lime Yellow"></button>
+                <button type="button" class="color-swatch air-swatch" data-color="#ff4081" style="background: #ff4081;" onclick="setAccentColor('#ff4081')" title="Magenta"></button>
+                <button type="button" class="color-swatch air-swatch" data-color="#e040fb" style="background: #e040fb;" onclick="setAccentColor('#e040fb')" title="Violet"></button>
+                <button type="button" class="color-swatch air-swatch" data-color="#7c4dff" style="background: #7c4dff;" onclick="setAccentColor('#7c4dff')" title="Deep Purple"></button>
+                <button type="button" class="color-swatch air-swatch" data-color="#536dfe" style="background: #536dfe;" onclick="setAccentColor('#536dfe')" title="Indigo"></button>
+                <button type="button" class="color-swatch air-swatch" data-color="#448aff" style="background: #448aff;" onclick="setAccentColor('#448aff')" title="Azure"></button>
+                <button type="button" class="color-swatch air-swatch" data-color="#40c4ff" style="background: #40c4ff;" onclick="setAccentColor('#40c4ff')" title="Sky"></button>
+                <button type="button" class="color-swatch air-swatch" data-color="#18ffff" style="background: #18ffff;" onclick="setAccentColor('#18ffff')" title="Aqua"></button>
+                <button type="button" class="color-swatch air-swatch" data-color="#64ffda" style="background: #64ffda;" onclick="setAccentColor('#64ffda')" title="Teal"></button>
+                <button type="button" class="color-swatch air-swatch" data-color="#69f0ae" style="background: #69f0ae;" onclick="setAccentColor('#69f0ae')" title="Mint"></button>
+                <button type="button" class="color-swatch air-swatch" data-color="#b2ff59" style="background: #b2ff59;" onclick="setAccentColor('#b2ff59')" title="Light Green"></button>
+                <button type="button" class="color-swatch air-swatch" data-color="#ffd740" style="background: #ffd740;" onclick="setAccentColor('#ffd740')" title="Gold"></button>
+                <button type="button" class="color-swatch air-swatch" data-color="#ffab40" style="background: #ffab40;" onclick="setAccentColor('#ffab40')" title="Orange"></button>
+                <button type="button" class="color-swatch air-swatch" data-color="#ff6e40" style="background: #ff6e40;" onclick="setAccentColor('#ff6e40')" title="Deep Orange"></button>
+                <button type="button" class="color-swatch air-swatch" data-color="#8d6e63" style="background: #8d6e63;" onclick="setAccentColor('#8d6e63')" title="Brown"></button>
+                <button type="button" class="color-swatch air-swatch" data-color="#9e9e9e" style="background: #9e9e9e;" onclick="setAccentColor('#9e9e9e')" title="Grey"></button>
+                <button type="button" class="color-swatch air-swatch" data-color="#607d8b" style="background: #607d8b;" onclick="setAccentColor('#607d8b')" title="Blue Grey"></button>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 12px; margin-top: 18px;">
+                <input type="color" id="airCustomAccent" onchange="setAccentColor(this.value)" style="width: 46px; height: 46px; border: none; border-radius: 10px; background: transparent; cursor: pointer;" title="Pick a custom accent color">
+                <div>
+                    <div style="font-size: 14px;">Custom color</div>
+                    <div style="font-size: 12px; color: var(--text-secondary);">Pick any shade from the color wheel</div>
+                </div>
+            </div>
+        </div>
+
+        <div style="background: var(--search-bg); padding: 24px; border-radius: 12px; margin-bottom: 24px;">
+            <h3 style="margin-top: 0; font-size: 20px;">Color Effects</h3>
+            <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 14px;">Tonal treatment applied on top of your accent color across the app.</p>
+            <div class="air-chip-group">
+                <button class="air-chip air-effect-chip" data-effect="none" onclick="window.setAccentEffect('none')" title="Default balanced tonal appearance">None</button>
+                <button class="air-chip air-effect-chip" data-effect="fidelity" onclick="window.setAccentEffect('fidelity')" title="Faithfully mirrors your exact accent color">Fidelity</button>
+                <button class="air-chip air-effect-chip" data-effect="vibrant" onclick="window.setAccentEffect('vibrant')" title="High energy and maximum saturation">Vibrant</button>
+                <button class="air-chip air-effect-chip" data-effect="expressive" onclick="window.setAccentEffect('expressive')" title="Artistic with playful secondary hues">Expressive</button>
+                <button class="air-chip air-effect-chip" data-effect="fruit_salad" onclick="window.setAccentEffect('fruit_salad')" title="Playful complementary fruit palette">Fruit Salad</button>
+                <button class="air-chip air-effect-chip" data-effect="rainbow" onclick="window.setAccentEffect('rainbow')" title="Slowly animated spectrum shift">Rainbow</button>
+                <button class="air-chip air-effect-chip" data-effect="content" onclick="window.setAccentEffect('content')" title="Content-focused balanced aesthetic">Content</button>
+                <button class="air-chip air-effect-chip" data-effect="monochrome" onclick="window.setAccentEffect('monochrome')" title="Sleek greyscale tonal styling">Monochrome</button>
+                <button class="air-chip air-effect-chip" data-effect="neutral" onclick="window.setAccentEffect('neutral')" title="Quiet, calm and understated tones">Neutral</button>
+            </div>
+            <div id="airEffectNote" style="font-size: 12px; color: var(--text-secondary); margin-top: 12px;"></div>
+        </div>
+
+        <div style="background: var(--search-bg); padding: 24px; border-radius: 12px; margin-bottom: 24px;">
+            <h3 style="margin-top: 0; font-size: 20px;">Dynamic Background</h3>
+            <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 14px;">An ambient backdrop behind the whole app that follows the song that is playing.</p>
+            <div class="air-chip-group">
+                <button class="air-chip air-dbg-chip" data-mode="off" onclick="window.setDynamicBackground('off')">Off</button>
+                <button class="air-chip air-dbg-chip" data-mode="gradient" onclick="window.setDynamicBackground('gradient')">Gradient</button>
+                <button class="air-chip air-dbg-chip" data-mode="blur" onclick="window.setDynamicBackground('blur')">Blur</button>
+                <button class="air-chip air-dbg-chip" data-mode="fluid" onclick="window.setDynamicBackground('fluid')">Fluid</button>
+            </div>
+            <div style="font-size: 12px; color: var(--text-secondary); margin-top: 12px;">Album art drives the colors. Gradient is subtle, Blur is softer, Fluid slowly animates.</div>
+        </div>
+
+        <div style="background: var(--search-bg); padding: 24px; border-radius: 12px; margin-bottom: 24px;">
+            <h3 style="margin-top: 0; font-size: 20px;">Fonts</h3>
+            <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 14px;">Typeface used across the app interface. Inter is the app's built-in typeface; the other options use fonts already on your system — nothing is downloaded.</p>
+            <div class="air-chip-group">
+                <button class="air-chip air-font-chip" data-font="inter" onclick="window.setAppFont('inter')">Inter (Default)</button>
+                <button class="air-chip air-font-chip" data-font="system" onclick="window.setAppFont('system')">System Default</button>
+                <button class="air-chip air-font-chip" data-font="sans_serif" onclick="window.setAppFont('sans_serif')">Sans-Serif</button>
+                <button class="air-chip air-font-chip" data-font="serif" onclick="window.setAppFont('serif')">Serif</button>
+                <button class="air-chip air-font-chip" data-font="monospace" onclick="window.setAppFont('monospace')">Monospace</button>
+                <button class="air-chip air-font-chip" data-font="rounded" onclick="window.setAppFont('rounded')">Rounded</button>
+                <button class="air-chip air-font-chip" data-font="condensed" onclick="window.setAppFont('condensed')">Condensed</button>
+            </div>
+        </div>
+
+        <div style="background: var(--search-bg); padding: 24px; border-radius: 12px; margin-bottom: 24px;">
+            <h3 style="margin-top: 0; font-size: 20px;">Language</h3>
+            <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 14px;">Language of the app interface. The language of songs and other content is set in Content Settings.</p>
+            <div class="air-chip-group">
+                <button class="air-chip air-lang-chip" data-lang="en" onclick="window.setUiLanguage('en')">English</button>
+                <button class="air-chip air-lang-chip" data-lang="hi" onclick="window.setUiLanguage('hi')">हिन्दी</button>
+                <button class="air-chip air-lang-chip" data-lang="mr" onclick="window.setUiLanguage('mr')">मराठी</button>
+                <button class="air-chip air-lang-chip" data-lang="bn" onclick="window.setUiLanguage('bn')">বাংলা</button>
+                <button class="air-chip air-lang-chip" data-lang="ta" onclick="window.setUiLanguage('ta')">தமிழ்</button>
+                <button class="air-chip air-lang-chip" data-lang="te" onclick="window.setUiLanguage('te')">తెలుగు</button>
+            </div>
+        </div>
+
+        <div style="background: var(--search-bg); padding: 24px; border-radius: 12px; margin-bottom: 24px;">
+            <h3 style="margin-top: 0; font-size: 20px;">Grid Cell Size</h3>
+            <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 14px;">Controls how large cards appear in Home, Library and Playlists.</p>
+            <div class="air-chip-group">
+                <button class="air-chip air-grid-chip" data-size="big" onclick="window.setGridSize('big')">Big</button>
+                <button class="air-chip air-grid-chip" data-size="small" onclick="window.setGridSize('small')">Small</button>
             </div>
         </div>
 
@@ -3567,11 +4181,16 @@ async function renderSettingsAppearance() {
         window.setTheme(localStorage.getItem('theme') || 'light');
         window.setWaveformAnimation(localStorage.getItem('wave_anim') === 'true');
         window.setDynamicIsland(localStorage.getItem('dynamic_island_enabled') === 'true');
+        window.airAppearanceInit();
         window.dlog('settings/appearance mounted');
         window.discordRenderState(!!window.__discordUser, window.__discordUser);
         window.discordRefreshState();
         const rpcBox = document.getElementById('btn-discord-rpc');
         if (rpcBox) rpcBox.checked = window.discordRpcEnabled;
+        const detBox = document.getElementById('btn-discord-details');
+        if (detBox) detBox.checked = window.discordUseDetails;
+        window.discordUpdatePreview();
+        window.ytRefreshAccount();
     }, 50);
 }
 
@@ -3590,6 +4209,10 @@ window.setAccentColor = function(color) {
     document.documentElement.style.setProperty('--accent', color);
     document.documentElement.style.setProperty('--primary-color', color);
     localStorage.setItem('accent_color', color);
+    if (window.applyAccentEffect) window.applyAccentEffect(localStorage.getItem('accent_effect') || 'none', color);
+    document.querySelectorAll('.air-swatch').forEach((el) => el.classList.toggle('active', el.getAttribute('data-color') === color));
+    const picker = document.getElementById('airCustomAccent');
+    if (picker) picker.value = color;
 }
 
 async function renderSettingsAbout() {
@@ -3612,12 +4235,12 @@ async function renderSettingsAbout() {
 
         <!-- App Name -->
         <h1 style="font-size: 32px; font-weight: 800; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; gap: 0; letter-spacing: -0.5px;">
-            <span style="color: var(--text-primary);">Air</span><span style="color: var(--accent);">Beats</span>
+            <span style="color: var(--text-primary);">Air</span><span style="color: var(--accent-text);">Beats</span>
         </h1>
 
         <!-- Version Badges -->
         <div style="display: flex; gap: 8px; margin-bottom: 20px; align-items: center;">
-            <span style="border: 1.5px solid var(--accent); color: var(--accent); border-radius: 50px; padding: 4px 16px; font-size: 13px; font-weight: bold; text-transform: uppercase;">6.4.0</span>
+            <span style="border: 1.5px solid var(--accent); color: var(--accent-text); border-radius: 50px; padding: 4px 16px; font-size: 13px; font-weight: bold; text-transform: uppercase;">6.4.0</span>
         </div>
 
         <!-- Developer Text -->
@@ -3627,18 +4250,18 @@ async function renderSettingsAbout() {
 
         <!-- Social Icons Row -->
         <div style="background: var(--search-bg); border-radius: 28px; display: flex; justify-content: space-evenly; align-items: center; padding: 12px 24px; width: 90%; max-width: 400px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); margin-bottom: 40px;">
-            <a href="https://www.facebook.com/venom.digital.creator" target="_blank" style="color: var(--accent); font-size: 20px; transition: opacity 0.2s;" onmouseover="this.style.opacity=0.8" onmouseout="this.style.opacity=1"><i class="fab fa-facebook"></i></a>
-            <a href="https://www.instagram.com/Dark__336/" target="_blank" style="color: var(--accent); font-size: 20px; transition: opacity 0.2s;" onmouseover="this.style.opacity=0.8" onmouseout="this.style.opacity=1"><i class="fab fa-instagram"></i></a>
-            <a href="https://github.com/d0x-dev" target="_blank" style="color: var(--accent); font-size: 20px; transition: opacity 0.2s;" onmouseover="this.style.opacity=0.8" onmouseout="this.style.opacity=1"><i class="fab fa-github"></i></a>
-            <a href="https://g.dev/Darkboy336" target="_blank" style="color: var(--accent); font-size: 20px; transition: opacity 0.2s;" onmouseover="this.style.opacity=0.8" onmouseout="this.style.opacity=1"><i class="fab fa-google"></i></a>
-            <a href="https://AirBeats.stormx.pw/" target="_blank" style="color: var(--accent); font-size: 20px; transition: opacity 0.2s;" onmouseover="this.style.opacity=0.8" onmouseout="this.style.opacity=1"><i class="fas fa-globe"></i></a>
+            <a href="https://www.facebook.com/venom.digital.creator" target="_blank" style="color: var(--accent-text); font-size: 20px; transition: opacity 0.2s;" onmouseover="this.style.opacity=0.8" onmouseout="this.style.opacity=1"><i class="fab fa-facebook"></i></a>
+            <a href="https://www.instagram.com/Dark__336/" target="_blank" style="color: var(--accent-text); font-size: 20px; transition: opacity 0.2s;" onmouseover="this.style.opacity=0.8" onmouseout="this.style.opacity=1"><i class="fab fa-instagram"></i></a>
+            <a href="https://github.com/d0x-dev" target="_blank" style="color: var(--accent-text); font-size: 20px; transition: opacity 0.2s;" onmouseover="this.style.opacity=0.8" onmouseout="this.style.opacity=1"><i class="fab fa-github"></i></a>
+            <a href="https://g.dev/Darkboy336" target="_blank" style="color: var(--accent-text); font-size: 20px; transition: opacity 0.2s;" onmouseover="this.style.opacity=0.8" onmouseout="this.style.opacity=1"><i class="fab fa-google"></i></a>
+            <a href="https://AirBeats.stormx.pw/" target="_blank" style="color: var(--accent-text); font-size: 20px; transition: opacity 0.2s;" onmouseover="this.style.opacity=0.8" onmouseout="this.style.opacity=1"><i class="fas fa-globe"></i></a>
         </div>
 
         <!-- Contributors Title -->
         <div style="width: 100%; padding: 0 30px; display: flex; align-items: center; margin-bottom: 20px; box-sizing: border-box;">
-            <i class="fas fa-users" style="color: var(--accent); font-size: 24px; margin-right: 12px;"></i>
+            <i class="fas fa-users" style="color: var(--accent-text); font-size: 24px; margin-right: 12px;"></i>
             <h2 style="font-size: 22px; font-weight: bold; color: var(--text-primary); margin: 0; margin-right: 12px;">Contributors</h2>
-            <span style="font-size: 13px; color: var(--accent); font-weight: 500;">1 Contributor</span>
+            <span style="font-size: 13px; color: var(--accent-text); font-weight: 500;">1 Contributor</span>
         </div>
 
         <!-- Contributor Card (Darkboy only) -->
@@ -3664,10 +4287,10 @@ async function renderSettingsAbout() {
 
                     <!-- Social Badges Bottom -->
                     <div style="display: flex; gap: 10px; margin-top: 10px;">
-                        <span style="width: 32px; height: 32px; border-radius: 50%; background: rgba(128,128,128,0.1); border: 1px solid rgba(128,128,128,0.2); display: flex; align-items: center; justify-content: center; color: var(--accent);"><i class="fab fa-github"></i></span>
-                        <span style="width: 32px; height: 32px; border-radius: 50%; background: rgba(128,128,128,0.1); border: 1px solid rgba(128,128,128,0.2); display: flex; align-items: center; justify-content: center; color: var(--accent);"><i class="fab fa-telegram-plane"></i></span>
-                        <span style="width: 32px; height: 32px; border-radius: 50%; background: rgba(128,128,128,0.1); border: 1px solid rgba(128,128,128,0.2); display: flex; align-items: center; justify-content: center; color: var(--accent);"><i class="fab fa-instagram"></i></span>
-                        <span style="width: 32px; height: 32px; border-radius: 50%; background: rgba(128,128,128,0.1); border: 1px solid rgba(128,128,128,0.2); display: flex; align-items: center; justify-content: center; color: var(--accent);"><i class="fas fa-globe"></i></span>
+                        <span style="width: 32px; height: 32px; border-radius: 50%; background: rgba(128,128,128,0.1); border: 1px solid rgba(128,128,128,0.2); display: flex; align-items: center; justify-content: center; color: var(--accent-text);"><i class="fab fa-github"></i></span>
+                        <span style="width: 32px; height: 32px; border-radius: 50%; background: rgba(128,128,128,0.1); border: 1px solid rgba(128,128,128,0.2); display: flex; align-items: center; justify-content: center; color: var(--accent-text);"><i class="fab fa-telegram-plane"></i></span>
+                        <span style="width: 32px; height: 32px; border-radius: 50%; background: rgba(128,128,128,0.1); border: 1px solid rgba(128,128,128,0.2); display: flex; align-items: center; justify-content: center; color: var(--accent-text);"><i class="fab fa-instagram"></i></span>
+                        <span style="width: 32px; height: 32px; border-radius: 50%; background: rgba(128,128,128,0.1); border: 1px solid rgba(128,128,128,0.2); display: flex; align-items: center; justify-content: center; color: var(--accent-text);"><i class="fas fa-globe"></i></span>
                     </div>
                 </div>
             </a>
@@ -3762,33 +4385,515 @@ async function renderMobileLibrary() {
         <div class="section-title" style="font-size: 24px; margin-bottom: 30px;">Library</div>
         <div style="display: flex; flex-direction: column; gap: 15px;">
             <a href="#playlists" style="display: flex; align-items: center; padding: 20px; background: var(--search-bg); border-radius: 12px; text-decoration: none; color: var(--text-primary);">
-                <i class="fas fa-list-music" style="font-size: 24px; width: 40px; color: var(--accent);"></i>
+                <i class="fas fa-list-music" style="font-size: 24px; width: 40px; color: var(--accent-text);"></i>
                 <span style="font-size: 18px; font-weight: 500;">Playlists</span>
                 <i class="fas fa-chevron-right" style="margin-left: auto; color: var(--text-secondary);"></i>
             </a>
             <a href="#artists" style="display: flex; align-items: center; padding: 20px; background: var(--search-bg); border-radius: 12px; text-decoration: none; color: var(--text-primary);">
-                <i class="fas fa-user-music" style="font-size: 24px; width: 40px; color: var(--accent);"></i>
+                <i class="fas fa-user-music" style="font-size: 24px; width: 40px; color: var(--accent-text);"></i>
                 <span style="font-size: 18px; font-weight: 500;">Artists</span>
                 <i class="fas fa-chevron-right" style="margin-left: auto; color: var(--text-secondary);"></i>
             </a>
             <a href="#albums" style="display: flex; align-items: center; padding: 20px; background: var(--search-bg); border-radius: 12px; text-decoration: none; color: var(--text-primary);">
-                <i class="fas fa-compact-disc" style="font-size: 24px; width: 40px; color: var(--accent);"></i>
+                <i class="fas fa-compact-disc" style="font-size: 24px; width: 40px; color: var(--accent-text);"></i>
                 <span style="font-size: 18px; font-weight: 500;">Albums</span>
                 <i class="fas fa-chevron-right" style="margin-left: auto; color: var(--text-secondary);"></i>
             </a>
             <a href="#history" style="display: flex; align-items: center; padding: 20px; background: var(--search-bg); border-radius: 12px; text-decoration: none; color: var(--text-primary);">
-                <i class="fas fa-history" style="font-size: 24px; width: 40px; color: var(--accent);"></i>
+                <i class="fas fa-history" style="font-size: 24px; width: 40px; color: var(--accent-text);"></i>
                 <span style="font-size: 18px; font-weight: 500;">Recently Played</span>
                 <i class="fas fa-chevron-right" style="margin-left: auto; color: var(--text-secondary);"></i>
             </a>
             <a href="#favorites" style="display: flex; align-items: center; padding: 20px; background: var(--search-bg); border-radius: 12px; text-decoration: none; color: var(--text-primary);">
-                <i class="fas fa-heart" style="font-size: 24px; width: 40px; color: var(--accent);"></i>
+                <i class="fas fa-heart" style="font-size: 24px; width: 40px; color: var(--accent-text);"></i>
                 <span style="font-size: 18px; font-weight: 500;">Favorite Songs</span>
                 <i class="fas fa-chevron-right" style="margin-left: auto; color: var(--text-secondary);"></i>
             </a>
         </div>
     `;
 }
+
+(function ytInjectNav() {
+    const build = () => {
+        if (!document.getElementById('yt-lib-style')) {
+            const style = document.createElement('style');
+            style.id = 'yt-lib-style';
+            style.textContent = '.yt-chip{display:inline-flex;align-items:center;gap:7px;padding:7px 14px;border-radius:999px;border:1px solid var(--text-secondary);background:transparent;color:var(--text-primary);font-size:13px;cursor:pointer;transition:border-color .18s ease,background .18s ease,color .18s ease}.yt-chip:hover{border-color:var(--accent)}.yt-chip.is-on{background:var(--accent);border-color:var(--accent);color:#fff}';
+            document.head.appendChild(style);
+        }
+        if (!document.getElementById('nav-settings-account')) {
+            const backupNav = document.getElementById('nav-settings-backup');
+            if (backupNav && backupNav.parentElement && backupNav.parentElement.parentElement) {
+                const li = document.createElement('li');
+                li.innerHTML = '<a href="#settings/account" class="nav-item" id="nav-settings-account"><i class="fas fa-user-circle"></i> <span>Account</span></a>';
+                backupNav.parentElement.parentElement.insertBefore(li, backupNav.parentElement);
+            }
+        }
+        const backupNavEl = document.getElementById('nav-settings-backup');
+        const settingsList = backupNavEl && backupNavEl.parentElement && backupNavEl.parentElement.parentElement;
+        if (settingsList && !document.getElementById('nav-settings-content')) {
+            const li = document.createElement('li');
+            li.innerHTML = '<a href="#settings/content" class="nav-item" id="nav-settings-content"><i class="fas fa-sliders-h"></i> <span data-i18n="content">Content Settings</span></a>';
+            settingsList.insertBefore(li, backupNavEl.parentElement);
+        }
+        if (settingsList && !document.getElementById('nav-settings-logs')) {
+            const li = document.createElement('li');
+            li.innerHTML = '<a href="#settings/logs" class="nav-item" id="nav-settings-logs"><i class="fas fa-file-medical-alt"></i> <span data-i18n="logs">Logs</span><span id="navLogsCrashDot" class="air-nav-dot" style="display:none;"></span></a>';
+            settingsList.insertBefore(li, backupNavEl.parentElement);
+        }
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', build);
+    else build();
+    setTimeout(build, 1500);
+    setTimeout(() => { if (window.ytRefreshAccount) window.ytRefreshAccount(); }, 900);
+    setTimeout(() => { if (window.airRefreshCrashBadge) window.airRefreshCrashBadge(); }, 1300);
+})();
+
+window.__ytLikedTracks = [];
+
+window.ytPlayLiked = function(index) {
+    if (!window.__ytLikedTracks || !window.__ytLikedTracks.length) return;
+    playList(window.__ytLikedTracks, index);
+};
+
+window.ytRenderCards = function(items, route, fallbackSubtitle, round) {
+    if (!items.length) return `<div style="text-align: center; padding: 40px; color: var(--text-secondary);">Nothing here yet</div>`;
+    let html = '<div style="display: flex; flex-wrap: wrap; gap: 24px;">';
+    items.forEach((item) => {
+        const image = getHighestQualityImage(item.image);
+        html += `
+            <div class="artist-card" onclick="window.location.hash='#${route}/${item.id}'" style="cursor: pointer; display: flex; flex-direction: column; align-items: center; width: 150px;">
+                <div class="card-img-wrapper" style="width: 150px; height: 150px; border-radius: ${round ? '50%' : '12px'}; overflow: hidden; box-shadow: 0 8px 16px rgba(0,0,0,0.1); margin-bottom: 12px;">
+                    <img loading="lazy" src="${image || 'https://via.placeholder.com/150'}" style="width: 100%; height: 100%; object-fit: cover;">
+                </div>
+                <div class="card-title" style="text-align: center; font-size: 14px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;">${item.name || item.title || ''}</div>
+                <div class="card-subtitle" style="text-align: center; font-size: 12px; color: var(--text-secondary); margin-top: 4px;">${item.subtitle || fallbackSubtitle}</div>
+            </div>
+        `;
+    });
+    return html + '</div>';
+};
+
+window.ytRenderTracks = function(items) {
+    window.__ytLikedTracks = items.slice();
+    if (!items.length) return `<div style="text-align: center; padding: 40px; color: var(--text-secondary);">No liked songs yet</div>`;
+    let html = '<div style="display: flex; flex-direction: column; gap: 8px; width: 100%;">';
+    items.forEach((t, i) => {
+        const image = getHighestQualityImage(t.image);
+        const dur = t.duration ? `${Math.floor(t.duration / 60)}:${String(t.duration % 60).padStart(2, '0')}` : '';
+        html += `
+            <div style="display: flex; align-items: center; gap: 14px; padding: 8px 10px; border-radius: 10px; cursor: pointer;" onmouseover="this.style.background='var(--search-bg)'" onmouseout="this.style.background=''" onclick="window.ytPlayLiked(${i})">
+                <img loading="lazy" src="${image || 'https://via.placeholder.com/150'}" style="width: 44px; height: 44px; border-radius: 6px; object-fit: cover; flex: none;">
+                <div style="flex: 1; min-width: 0;">
+                    <div style="font-size: 14px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${t.name || ''}</div>
+                    <div style="font-size: 12px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${t.subtitle || ''}</div>
+                </div>
+                <div style="font-size: 12px; color: var(--text-secondary); flex: none;">${dur}</div>
+            </div>
+        `;
+    });
+    return html + '</div>';
+};
+
+window.ytLoggedIn = function() {
+    return !!(window.ytAccount && window.ytAccount.loggedIn);
+};
+
+window.ytMirrorLike = function(trackId, liked) {
+    if (!window.ytLoggedIn() || !trackId) return;
+    const track = (window.allTracks && window.allTracks[trackId]) || null;
+    const isYtId = /^[A-Za-z0-9_-]{11}$/.test(trackId);
+    if (isYtId && (!track || track.source !== 'saavn')) {
+        fetch('/api/yt/like', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: trackId, liked: !!liked })
+        }).then(r => r.json()).then(data => {
+            if (data && data.success && liked) window.ytMarkFavoriteSynced(trackId);
+        }).catch(() => {});
+        return;
+    }
+    // JioSaavn track: when liked, find the YouTube Music match and like it there too
+    if (!liked || !track) return;
+    const name = track.name || track.title || '';
+    if (!name) return;
+    const artist = ((track.artists && track.artists.primary) || []).map(a => a.name).filter(Boolean).join(', ') || track.subtitle || '';
+    fetch('/api/yt/like', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: trackId, name: name, artist: artist, duration: track.duration || 0, source: 'saavn', liked: true })
+    }).then(r => r.json()).then(data => {
+        if (data && data.success && data.data && data.data.id) {
+            window.ytAdoptLikedTrack(trackId, data.data);
+        } else if (window.showToast) {
+            window.showToast('No YouTube Music match found — kept as a local favorite');
+        }
+    }).catch(() => {});
+};
+
+window.ytMarkFavoriteSynced = function(trackId) {
+    if (!Array.isArray(favoriteSongs)) favoriteSongs = [];
+    const trackIds = new Set([trackId]);
+    const entry = favoriteSongs.find(s => s && (s.id === trackId || (s.saavnId && s.saavnId === trackId)));
+    if (entry) {
+        entry.ytLike = true;
+        entry.ytChecked = true;
+        trackIds.add(entry.id);
+    }
+    saveFavorites();
+    window.favoriteSongs = favoriteSongs;
+};
+
+window.ytAdoptLikedTrack = function(oldId, ytTrack) {
+    if (!Array.isArray(favoriteSongs)) favoriteSongs = [];
+    const merged = Object.assign({}, ytTrack, { ytLike: true, ytChecked: true, saavnId: oldId });
+    const idx = favoriteSongs.findIndex(s => s && s.id === oldId);
+    if (idx > -1) {
+        favoriteSongs.splice(idx, 1, merged);
+    } else if (!favoriteSongs.some(s => s && s.id === merged.id)) {
+        favoriteSongs.push(merged);
+    }
+    window.allTracks[merged.id] = merged;
+    saveFavorites();
+    window.favoriteSongs = favoriteSongs;
+    if (window.showToast) window.showToast('Added to YouTube Music liked songs');
+    if (window.location.hash.indexOf('favorites') >= 0 && typeof renderFavorites === 'function') renderFavorites();
+};
+
+window.ytSyncFavorites = async function(force) {
+    if (!window.ytLoggedIn()) return;
+    if (window.__ytFavSyncRunning) return;
+    if (!force && window.__ytFavSyncedAt && (Date.now() - window.__ytFavSyncedAt) < 60000) return;
+    window.__ytFavSyncRunning = true;
+    window.__ytFavSyncedAt = Date.now();
+    try {
+        const res = await fetch('/api/library/liked' + (force ? '?r=' + Date.now() : ''));
+        const data = await res.json();
+        const liked = (data && data.success && Array.isArray(data.data)) ? data.data : null;
+        if (!liked) return;
+        if (!Array.isArray(favoriteSongs)) favoriteSongs = [];
+        const likedIds = new Set(liked.map(t => t && t.id).filter(Boolean));
+        // 1. Mirror all YT Music likes into local favorites
+        liked.forEach(t => {
+            if (!t || !t.id) return;
+            if (!window.allTracks[t.id]) window.allTracks[t.id] = t;
+            if (!favoriteSongs.some(s => s && s.id === t.id)) {
+                favoriteSongs.push(Object.assign({}, t, { ytLike: true, ytChecked: true }));
+            } else {
+                const entry = favoriteSongs.find(s => s && s.id === t.id);
+                if (entry) { entry.ytLike = true; entry.ytChecked = true; }
+            }
+        });
+        // 2. Drop locally-synced entries that are no longer liked on YT
+        favoriteSongs = favoriteSongs.filter(s => {
+            if (!s || !s.id) return false;
+            if (s.ytLike && !likedIds.has(s.id)) return false;
+            return true;
+        });
+        saveFavorites();
+        window.favoriteSongs = favoriteSongs;
+        // 3. Upload local-only likes to YT Music (single attempt, max 20)
+        const pending = favoriteSongs.filter(s => s && s.id && !s.ytLike && !s.ytChecked).slice(0, 20);
+        for (const s of pending) {
+            s.ytChecked = true;
+            try {
+                const isYtId = /^[A-Za-z0-9_-]{11}$/.test(s.id);
+                const name = s.name || s.title || '';
+                if (isYtId && !name) {
+                    const r = await fetch('/api/yt/like', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: s.id, liked: true }) });
+                    const d = await r.json();
+                    if (d && d.success) s.ytLike = true;
+                    continue;
+                }
+                if (!name) continue;
+                const artist = ((s.artists && s.artists.primary) || []).map(a => a.name).filter(Boolean).join(', ') || s.subtitle || '';
+                const r = await fetch('/api/yt/like', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: s.id, name: name, artist: artist, duration: s.duration || 0, source: isYtId ? 'youtube' : 'saavn', liked: true })
+                });
+                const d = await r.json();
+                if (d && d.success) {
+                    s.ytLike = true;
+                    if (d.data && d.data.id && !isYtId) { s.saavnId = s.id; s.id = d.data.id; }
+                }
+            } catch (e) {}
+            saveFavorites();
+        }
+        window.favoriteSongs = favoriteSongs;
+        if (window.location.hash.indexOf('favorites') >= 0 && typeof renderFavorites === 'function') renderFavorites();
+    } catch (e) {
+    } finally {
+        window.__ytFavSyncRunning = false;
+    }
+};
+
+window.airPrefetchIds = function (ids) {
+    // Warm stream URLs in the background so the first click plays instantly.
+    const clean = (ids || []).filter((id) => typeof id === 'string' && /^[A-Za-z0-9_-]{11}$/.test(id));
+    if (!clean.length) return;
+    fetch('/api/prefetch?ids=' + clean.slice(0, 3).join(',')).catch(() => {});
+};
+
+window.ytPrefetchAhead = function(count) {
+    if (!Array.isArray(currentQueue) || currentIndex < 0) return;
+    const ids = [];
+    for (let i = currentIndex + 1; i < currentQueue.length && ids.length < (count || 2); i++) {
+        const t = currentQueue[i];
+        if (t && t.id && /^[A-Za-z0-9_-]{11}$/.test(t.id) && t.source !== 'saavn') ids.push(t.id);
+    }
+    if (!ids.length) return;
+    fetch('/api/prefetch?ids=' + ids.join(',')).catch(() => {});
+};
+
+window.ytTrackStarted = function(track) {
+    clearTimeout(window.__ytPlayTimer);
+    if (!track || !track.id || !window.ytLoggedIn()) return;
+    const duration = track.duration || 0;
+    // Scrobble threshold matching the Android app: 30s, or 70% for short tracks
+    const thresholdMs = (duration > 0 && duration * 1000 < 30000) ? Math.round(duration * 700) : 30000;
+    window.__ytPendingPlay = {
+        id: track.id,
+        name: track.name || track.title || '',
+        artist: ((track.artists && track.artists.primary) || []).map(a => a.name).filter(Boolean).join(', ') || track.subtitle || '',
+        duration: duration,
+        source: track.source || 'youtube'
+    };
+    // For non-YT tracks (Saavn) resolve the YT match early so recording/liking stays fast
+    if (track.id && !/^[A-Za-z0-9_-]{11}$/.test(track.id) && window.__ytPendingPlay.name) {
+        fetch('/api/yt/resolve?name=' + encodeURIComponent(window.__ytPendingPlay.name) + '&artist=' + encodeURIComponent(window.__ytPendingPlay.artist) + '&duration=' + (duration || 0)).catch(() => {});
+    }
+    const fire = () => {
+        const pending = window.__ytPendingPlay;
+        const current = window.getCurrentTrack ? window.getCurrentTrack() : null;
+        if (!pending || !current || current.id !== pending.id) return;
+        if (!window.ytLoggedIn()) return;
+        if (!audio || audio.paused) {
+            // currently paused — retry when playback starts
+            const onResume = () => {
+                audio.removeEventListener('play', onResume);
+                if (window.__ytPendingPlay === pending) fire();
+            };
+            audio.addEventListener('play', onResume);
+            return;
+        }
+        window.__ytRecordedPlay = Object.assign({}, pending, { played: Math.round(audio.currentTime || 0) });
+        fetch('/api/yt/played', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(window.__ytRecordedPlay)
+        }).catch(() => {});
+    };
+    window.__ytPlayTimer = setTimeout(fire, thresholdMs);
+};
+
+window.ytTrackEnded = function() {
+    clearTimeout(window.__ytPlayTimer);
+    window.__ytPendingPlay = null;
+    const recorded = window.__ytRecordedPlay;
+    window.__ytRecordedPlay = null;
+    if (!recorded || !window.ytLoggedIn()) return;
+    fetch('/api/yt/played', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            id: recorded.id,
+            name: recorded.name,
+            artist: recorded.artist,
+            source: recorded.source,
+            played: Math.round((audio && audio.currentTime) || recorded.played || recorded.duration || 0),
+            duration: recorded.duration || Math.round((audio && audio.duration) || 0),
+            final: true
+        })
+    }).catch(() => {});
+};
+
+window.ytHandleStreamError = function() {
+    const code = audio.error ? audio.error.code : 0;
+    if (code < 3) return false;
+    const track = window.getCurrentTrack ? window.getCurrentTrack() : null;
+    if (!track || !track.id) return false;
+    const state = (window.__ytStreamRetry && window.__ytStreamRetry.id === track.id)
+        ? window.__ytStreamRetry
+        : { id: track.id, triedRetry: false, triedSaavn: false, triedYt: false };
+    window.__ytStreamRetry = state;
+    const name = track.name || track.title || '';
+    const artist = ((track.artists && track.artists.primary) || []).map(a => a.name).filter(Boolean).join(' ');
+    // 1. Retry the same stream (with a cache-buster)
+    if (!state.triedRetry) {
+        state.triedRetry = true;
+        const urls = track.downloadUrl || [];
+        const entry = urls.length ? urls[urls.length - 1] : null;
+        if (entry && entry.url) {
+            if (window.showToast) window.showToast('Retrying stream...');
+            audio.src = entry.url + (entry.url.indexOf('?') >= 0 ? '&' : '?') + 'proxy=1&r=' + Date.now();
+            audio.play().catch(() => {});
+            return true;
+        }
+    }
+    // 2. YouTube failed -> play the JioSaavn match
+    if (!state.triedSaavn && track.source !== 'saavn' && name) {
+        state.triedSaavn = true;
+        if (window.showToast) window.showToast('YouTube failed, trying JioSaavn...');
+        fetch('/api/saavn/resolve?name=' + encodeURIComponent(name) + '&artist=' + encodeURIComponent(artist) + '&duration=' + (track.duration || 0))
+            .then(r => r.json())
+            .then(data => {
+                const match = data && data.data;
+                if (!match || !match.downloadUrl || !match.downloadUrl.length) throw new Error('no match');
+                track.downloadUrl = match.downloadUrl;
+                track.saavnId = match.id;
+                audio.src = match.downloadUrl[0].url;
+                audio.play().catch(() => {});
+            })
+            .catch(() => {
+                if (window.showToast) window.showToast('Could not play this song');
+            });
+        return true;
+    }
+    // 3. JioSaavn failed -> play the YouTube match
+    if (!state.triedYt && track.source === 'saavn' && name && window.ytLoggedIn && window.ytLoggedIn()) {
+        state.triedYt = true;
+        if (window.showToast) window.showToast('JioSaavn failed, trying YouTube...');
+        fetch('/api/yt/resolve?name=' + encodeURIComponent(name) + '&artist=' + encodeURIComponent(artist) + '&duration=' + (track.duration || 0))
+            .then(r => r.json())
+            .then(data => {
+                const match = data && data.data;
+                if (!match || !match.downloadUrl || !match.downloadUrl.length) throw new Error('no match');
+                track.downloadUrl = match.downloadUrl;
+                track.ytVideoId = match.id;
+                audio.src = match.downloadUrl[0].url;
+                audio.play().catch(() => {});
+            })
+            .catch(() => {
+                if (window.showToast) window.showToast('Could not play this song');
+            });
+        return true;
+    }
+    if (window.showToast) window.showToast('Could not play this song');
+    return true;
+};
+
+window.ytCardHtml = function(item, type) {
+    const image = getHighestQualityImage(item.image);
+    const route = type === 'album' ? 'album' : 'playlist';
+    const label = item.name || item.title || '';
+    return `
+        <div class="card playlist-card" onclick="window.location.hash='#${route}/${item.id}'" style="cursor: pointer;">
+            <div class="card-img-wrapper">
+                <img src="${image || 'https://via.placeholder.com/150'}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 8px;">
+            </div>
+            <div class="card-info">
+                <div class="card-title" title="${label.replace(/"/g, '&quot;')}">${label}</div>
+                <p style="margin: 0; color: var(--text-secondary); font-size: 0.9rem;">${item.subtitle || (type === 'album' ? 'Album' : 'Playlist')}</p>
+            </div>
+        </div>
+    `;
+};
+
+window.ytRenderLibrarySections = async function(extrasOnly) {
+    const container = document.getElementById('yt-library-sections');
+    if (!container) return;
+    if (!window.ytAccount) await window.ytRefreshAccount();
+    if (!window.ytLoggedIn()) {
+        container.innerHTML = '';
+        return;
+    }
+    container.innerHTML = window.airDotsHtml('Loading YouTube Music library\u2026');
+    try {
+        const [plRes, likedRes, subRes, albRes] = await Promise.all([
+            fetch('/api/library/playlists').then(r => r.json()).catch(() => ({})),
+            fetch('/api/library/liked').then(r => r.json()).catch(() => ({})),
+            fetch('/api/library/subscriptions').then(r => r.json()).catch(() => ({})),
+            fetch('/api/library/albums').then(r => r.json()).catch(() => ({}))
+        ]);
+        const playlists = (plRes && plRes.data) || [];
+        const liked = (likedRes && likedRes.data) || [];
+        const subs = (subRes && subRes.data) || [];
+        const albums = (albRes && albRes.data) || [];
+        window.__ytLikedTracks = liked.slice();
+        if (!extrasOnly && playlists.length && window.ytMirrorPlaylists) window.ytMirrorPlaylists(playlists, true);
+
+        let html = '';
+        if (!extrasOnly) {
+            const likedImage = liked.length ? getHighestQualityImage(liked[0].image) : '';
+            html += `
+            <div class="header-section" style="margin: 40px 0 18px 0;">
+                <h1 style="font-size: 2rem; font-weight: 700; margin: 0; color: var(--text-primary);">From YouTube Music</h1>
+                <p style="color: var(--text-secondary); margin: 6px 0 0 0;">${window.ytAccount.name || ''}${window.ytAccount.handle ? ' &middot; ' + window.ytAccount.handle : ''}</p>
+            </div>
+        `;
+            const likedCard = `
+            <div class="card playlist-card" onclick="window.location.hash='#likedsongs'" style="cursor: pointer;">
+                <div class="card-img-wrapper">
+                    ${likedImage
+                        ? `<img src="${likedImage}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 8px;">`
+                        : `<div style="width: 100%; height: 100%; border-radius: 8px; background: linear-gradient(135deg, #ff2d55, #7a1fff); display: flex; align-items: center; justify-content: center;"><i class="fas fa-heart" style="font-size: 3rem; color: #fff;"></i></div>`}
+                </div>
+                <div class="card-info">
+                    <div class="card-title">Liked Songs</div>
+                    <p style="margin: 0; color: var(--text-secondary); font-size: 0.9rem;">${liked.length} songs</p>
+                </div>
+            </div>
+        `;
+            html += '<div class="grid-container">' + likedCard + playlists.map(pl => window.ytCardHtml(pl, 'playlist')).join('') + '</div>';
+        }
+        if (albums.length) {
+            html += `<h3 style="margin: 30px 0 14px 0; color: var(--text-primary);">Your albums</h3><div class="grid-container">` + albums.map(al => window.ytCardHtml(al, 'album')).join('') + '</div>';
+        }
+        if (subs.length) {
+            html += `<h3 style="margin: 30px 0 14px 0; color: var(--text-primary);">Subscribed artists</h3><div style="display: flex; flex-wrap: wrap; gap: 24px;">` + subs.map(ar => `
+                <div class="artist-card" onclick="window.location.hash='#artist/${ar.id}'" style="cursor: pointer; display: flex; flex-direction: column; align-items: center; width: 150px;">
+                    <div class="card-img-wrapper" style="width: 150px; height: 150px; border-radius: 50%; overflow: hidden; box-shadow: 0 8px 16px rgba(0,0,0,0.1); margin-bottom: 12px;">
+                        <img src="${getHighestQualityImage(ar.image) || 'https://via.placeholder.com/150'}" style="width: 100%; height: 100%; object-fit: cover;">
+                    </div>
+                    <div class="card-title" style="text-align: center; font-size: 14px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;">${ar.name || ''}</div>
+                </div>
+            `).join('') + '</div>';
+        }
+        container.innerHTML = html;
+    } catch (e) {
+        container.innerHTML = '';
+    }
+};
+
+window.renderLikedSongs = async function() {
+    routerView.innerHTML = window.airDotsHtml('Liked Songs\u2026');
+    const res = await fetch('/api/library/liked').then(r => r.json()).catch(() => ({}));
+    const items = (res && res.data) || [];
+    if (!(res && res.success)) {
+        const errText = String((res && res.error) || '');
+        const needSignIn = /not logged in|sign in/i.test(errText);
+        routerView.innerHTML = `
+            <div class="hero-header">
+                <div class="hero-info">
+                    <div class="hero-title">Liked Songs</div>
+                    <div class="hero-meta">YouTube Music</div>
+                </div>
+            </div>
+            ${needSignIn ? window.ytPremiumPromptHtml() : ''}
+            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px 20px 60px 20px; text-align: center;">
+                <i class="fas fa-${needSignIn ? 'fa-right-to-bracket' : 'fa-triangle-exclamation'}" style="font-size: 42px; color: var(--accent-text); margin-bottom: 12px;"></i>
+                <div style="font-size: 15px; color: var(--text-secondary); max-width: 560px;">${needSignIn ? 'Sign in with your Google account to see your liked songs.' : (window.airEsc ? window.airEsc(errText) : errText) || 'Could not load Liked Songs.'}</div>
+                ${needSignIn ? '' : `<button class="btn-primary" style="margin-top: 18px; padding: 10px 22px; border-radius: 8px; cursor: pointer;" onclick="window.renderLikedSongs()"><i class="fas fa-rotate-right"></i> Try again</button>`}
+            </div>
+        `;
+        return;
+    }
+    items.forEach(item => { window.allTracks[item.id] = item; });
+    window.__ytLikedTracks = items.slice();
+    // Warm the first 3 liked-song streams so playback from this page starts instantly.
+    window.airPrefetchIds(items.slice(0, 3).map((t) => t.id));
+    let html = `
+        <div class="back-btn" onclick="history.back()" title="Go Back"><i class="fas fa-arrow-left"></i></div>
+        <div class="header-section" style="margin-bottom: 20px;">
+            <h1 style="font-size: 2.5rem; font-weight: 700; margin: 0 0 10px 0; color: var(--text-primary);">Liked Songs</h1>
+            <p style="color: var(--text-secondary); margin: 0 0 14px 0;">${items.length} songs from YouTube Music</p>
+            ${items.length ? `<button class="btn-primary" style="padding: 10px 22px; border-radius: 8px; cursor: pointer;" onclick="window.ytPlayLiked(0)"><i class="fas fa-play"></i> Play all</button>` : ''}
+        </div>
+    `;
+    html += window.ytRenderTracks(items);
+    routerView.innerHTML = html;
+};
 
 window.focusMobileSearch = function() {
     // Reveal top search bar briefly and focus it
@@ -4024,7 +5129,7 @@ window.renderExplore = async function() {
                         const icon = moodIcons[m.title] || 'fa-music';
                         return `
                         <div class="mood-card" onclick="window.openMoodCategory('${encodeURIComponent(m.params)}', '${encodeURIComponent(m.title)}')">
-                            <i class="fas ${icon}" style="font-size: 18px; color: var(--accent); margin-right: 12px; z-index: 1;"></i>
+                            <i class="fas ${icon}" style="font-size: 18px; color: var(--accent-text); margin-right: 12px; z-index: 1;"></i>
                             <div class="mood-card-title">${m.title}</div>
                             <i class="fas ${icon} mood-card-decor"></i>
                         </div>
@@ -4071,7 +5176,7 @@ window.renderExplore = async function() {
                 <div class="mood-cards-grid">
                     ${genres.map(g => `
                         <div class="mood-card" onclick="window.openMoodCategory('${encodeURIComponent(g.params)}', '${encodeURIComponent(g.title)}')">
-                            <i class="fas fa-guitar" style="font-size: 18px; color: var(--accent); margin-right: 12px; z-index: 1;"></i>
+                            <i class="fas fa-guitar" style="font-size: 18px; color: var(--accent-text); margin-right: 12px; z-index: 1;"></i>
                             <div class="mood-card-title">${g.title}</div>
                             <i class="fas fa-guitar mood-card-decor"></i>
                         </div>
@@ -4344,11 +5449,13 @@ async function renderPlaylist(id) {
         }
         const playlist = data.data;
         window.currentRenderedTracks = playlist.songs;
+        // Warm the first 3 playlist streams.
+        window.airPrefetchIds((playlist.songs || []).slice(0, 3).map((s) => s.id));
         
         let playlists = getPlaylists();
         let isSaved = playlists.some(p => p.id === playlist.id);
         let iconClass = isSaved ? 'fas fa-check' : 'fas fa-plus';
-        let colorStyle = isSaved ? 'color: var(--accent);' : '';
+        let colorStyle = isSaved ? 'color: var(--accent-text);' : '';
         
         let html = `
         <div class="back-btn" onclick="history.back()" title="Go Back"><i class="fas fa-arrow-left"></i></div>
@@ -4360,7 +5467,7 @@ async function renderPlaylist(id) {
                 <div class="hero-meta">${playlist.author} &bull; ${playlist.songCount || 0} songs</div>
                 <div class="action-buttons">
                     <button class="btn-primary" onclick="playList(window.currentRenderedTracks)">PLAY</button>
-                    <button class="icon-btn" onclick="window.toggleSaveYouTubePlaylist('${playlist.id}', this, '${playlist.name.replace(/'/g, "\\\\'")}', '${getHighestQualityImage(playlist.image)}')">
+                    <button class="icon-btn icon-btn-surface" onclick="window.toggleSaveYouTubePlaylist('${playlist.id}', this, '${playlist.name.replace(/'/g, "\\\\'")}', '${getHighestQualityImage(playlist.image)}')">
                         <i class="${iconClass}" style="${colorStyle}"></i>
                     </button>
                 </div>
@@ -4436,8 +5543,9 @@ if (window.electronAPI && window.electronAPI.onIslandAction) {
             const btn = document.getElementById('repeatBtn');
             if (btn) btn.click();
         } else if (typeof action === 'object' && action.type === 'seek') {
-            if (audio.duration) {
-                audio.currentTime = action.pct * audio.duration;
+            if (audio.duration && isFinite(action.pct)) {
+                const target = action.pct * audio.duration;
+                if (isFinite(target)) audio.currentTime = target;
             }
         }
     });
@@ -4452,12 +5560,12 @@ async function renderSettingsUpdates() {
     routerView.innerHTML = `
     <div style="padding: 0 0 100px 0; display: flex; flex-direction: column; align-items: center; max-width: 800px; margin: 0 auto; width: 100%; font-family: sans-serif;">
         <div style="height: 40px;"></div>
-        <div style="font-size: 64px; margin-bottom: 20px; color: var(--accent);">
+        <div style="font-size: 64px; margin-bottom: 20px; color: var(--accent-text);">
             <i class="fas fa-sync-alt"></i>
         </div>
         <h1 style="font-size: 32px; font-weight: 700; color: var(--text-primary); margin: 0 0 10px 0;">Updates</h1>
         <div style="font-size: 16px; color: var(--text-secondary); margin-bottom: 30px;">
-            Current Version: <span style="color: var(--accent); font-weight: 600;">v${currentVersion}</span>
+            Current Version: <span style="color: var(--accent-text); font-weight: 600;">v${currentVersion}</span>
         </div>
         
         <button id="btn-check-updates-screen" onclick="checkForUpdates(true, true)" style="background: var(--accent); color: #000; border: none; padding: 12px 30px; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 10px;">
@@ -5147,7 +6255,7 @@ window.StatsEngine = {
     },
 
     escApos: function(v) {
-        return this.cleanStr(v).replace(/'/g, "\\'");
+        return window.airJsAttrEsc(this.cleanStr(v));
     },
 
     escQuot: function(v) {
@@ -5872,7 +6980,7 @@ async function renderStats() {
                     <div class="stats-rank-header">
                         <div class="stats-rank-title">
                             ${realRank.name.toUpperCase()} TIER
-                            <span style="font-size: 12px; font-weight: 600; color: var(--accent); background: rgba(29, 185, 84, 0.12); padding: 3px 10px; border-radius: 50px;">
+                            <span style="font-size: 12px; font-weight: 600; color: var(--accent-text); background: rgba(29, 185, 84, 0.12); padding: 3px 10px; border-radius: 50px;">
                                 ${realRank.desc}
                             </span>
                         </div>
@@ -5965,7 +7073,7 @@ async function renderStats() {
                         const safeArtist = escApos(sArtist);
                         return `
                         <div class="stats-chart-row" onclick="window.playSingleTrack('${s.id}')">
-                            <span class="stats-chart-rank" style="${idx === 0 ? 'color: #ffd700;' : (idx === 1 ? 'color: #c0c0c0;' : (idx === 2 ? 'color: #cd7f32;' : ''))}">#${idx + 1}</span>
+                            <span class="stats-chart-rank${idx < 3 ? ' rank-' + (idx + 1) : ''}">#${idx + 1}</span>
                             <div class="stats-chart-thumb-wrap">
                                 <img src="${getHighestQualityImage(s.image)}" 
                                      data-song-id="${s.id}" 
@@ -6133,11 +7241,13 @@ window.switchStatsMode = function(mode) {
     window.currentStatsMode = mode;
     window.currentStatsChipIndex = 0;
     renderStats();
+    if (window.airScrollTop) window.airScrollTop();
 };
 
 window.setStatsChipIndex = function(idx) {
     window.currentStatsChipIndex = idx;
     renderStats();
+    if (window.airScrollTop) window.airScrollTop();
 };
 
 window.shuffleMostPlayedStats = function() {
@@ -6183,7 +7293,7 @@ window.openInsightModal = function() {
         <div class="insight-modal-card">
             <div class="insight-header">
                 <div style="display: flex; align-items: center; gap: 12px;">
-                    <i class="fas fa-sparkles" style="font-size: 24px; color: var(--accent);"></i>
+                    <i class="fas fa-sparkles" style="font-size: 24px; color: var(--accent-text);"></i>
                     <div>
                         <h2 style="margin: 0; font-size: 22px; font-weight: 800; color: #fff;">AirBeats Insight</h2>
                         <div style="font-size: 13px; color: var(--text-secondary);">Your personalized musical journey</div>
@@ -6215,7 +7325,7 @@ window.openInsightModal = function() {
                              alt="${escQuot(topSongTitle) || 'Top Track'}">
                     </div>
                     <div style="overflow: hidden;">
-                        <div style="font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase;">Top Track</div>
+                        <div style="font-size: 11px; font-weight: 700; color: var(--accent-text); text-transform: uppercase;">Top Track</div>
                         <div style="font-size: 14px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                             ${escQuot(topSongTitle) || 'None yet'}
                         </div>
@@ -6235,7 +7345,7 @@ window.openInsightModal = function() {
                              alt="${escQuot(topArtistName) || 'Top Artist'}">
                     </div>
                     <div style="overflow: hidden;">
-                        <div style="font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase;">Top Artist</div>
+                        <div style="font-size: 11px; font-weight: 700; color: var(--accent-text); text-transform: uppercase;">Top Artist</div>
                         <div style="font-size: 14px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                             ${escQuot(topArtistName) || 'None yet'}
                         </div>
@@ -6382,7 +7492,7 @@ window.openProfileCustomizerModal = function() {
                     <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;">
                         Showcase Badge
                     </label>
-                    <span style="font-size: 11px; color: var(--accent); cursor: pointer;" onclick="window.selectBadgeAuto()">
+                    <span style="font-size: 11px; color: var(--accent-text); cursor: pointer;" onclick="window.selectBadgeAuto()">
                         Auto (Highest Rank: ${realRank.name})
                     </span>
                 </div>
@@ -6773,6 +7883,7 @@ window.openAodSettingsFromSheet = function() {
 
 window.aodClockInterval = null;
 window.aodWakeLock = null;
+window.aodIslandWasOn = false;
 
 window.activateAlwaysOnDisplay = async function(requestFs = true) {
     const aod = document.getElementById('alwaysOnDisplayOverlay');
@@ -6780,6 +7891,13 @@ window.activateAlwaysOnDisplay = async function(requestFs = true) {
 
     aod.style.display = 'flex';
     document.body.classList.add('aod-active');
+
+    // Dynamic Island is off during AOD — hidden at runtime only; the saved
+    // preference (localStorage) is untouched and it restores on exit.
+    window.aodIslandWasOn = localStorage.getItem('dynamic_island_enabled') === 'true';
+    if (window.aodIslandWasOn && window.electronAPI && window.electronAPI.toggleDynamicIsland) {
+        window.electronAPI.toggleDynamicIsland(false);
+    }
 
     window.applyAodSettingsToView();
     window.updateAodTrackInfo();
@@ -6832,6 +7950,13 @@ window.exitAlwaysOnDisplay = async function() {
             else if (document.webkitExitFullscreen) await document.webkitExitFullscreen();
         } catch(e) {}
     }
+
+    // Bring the island back if it was on before AOD. setDynamicIsland(true)
+    // pushes the current track itself (the island window is created async).
+    if (window.aodIslandWasOn && window.electronAPI && window.electronAPI.toggleDynamicIsland) {
+        window.setDynamicIsland(true);
+    }
+    window.aodIslandWasOn = false;
 };
 
 window.startAodClock = function() {
@@ -6982,7 +8107,10 @@ window.onAodProgressClick = function(e) {
     const rect = container.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const frac = Math.max(0, Math.min(1, clickX / rect.width));
-    audio.currentTime = frac * audio.duration;
+    if (rect.width && isFinite(audio.duration) && audio.duration > 0) {
+        const target = frac * audio.duration;
+        if (isFinite(target)) audio.currentTime = target;
+    }
     window.updateAodProgress();
 };
 
@@ -7069,7 +8197,7 @@ async function renderSettingsAOD() {
             <div class="hero-header" style="background: none; border-bottom: 1px solid var(--border-color); margin-bottom: 30px; padding: 10px 0 20px 0;">
                 <div class="hero-info">
                     <div class="hero-title" style="font-size: 32px; font-weight: 700; margin-bottom: 6px; display: flex; align-items: center; gap: 12px;">
-                        <i class="fas fa-moon" style="color: var(--accent);"></i> Always On Display
+                        <i class="fas fa-moon" style="color: var(--accent-text);"></i> Always On Display
                     </div>
                     <div class="hero-meta" style="color: var(--text-secondary); font-size: 14px;">
                         Customize your ambient OLED screen layout, artwork shapes, digital clock, and controls
@@ -7252,7 +8380,7 @@ async function renderSettingsAOD() {
                 <div style="margin-bottom: 22px;">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
                         <span style="font-size: 14px; font-weight: 600;">Artwork Size</span>
-                        <span id="aodArtSizeVal" style="color: var(--accent); font-weight: 700;">${Math.round(artSize * 100)}%</span>
+                        <span id="aodArtSizeVal" style="color: var(--accent-text); font-weight: 700;">${Math.round(artSize * 100)}%</span>
                     </div>
                     <input type="range" min="35" max="85" value="${Math.round(artSize * 100)}" class="sheet-volume-slider" oninput="window.setAodSlider('aod_art_size', this.value / 100, 'aodArtSizeVal', '%')">
                 </div>
@@ -7261,7 +8389,7 @@ async function renderSettingsAOD() {
                 <div style="margin-bottom: 22px;">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
                         <span style="font-size: 14px; font-weight: 600;">Background Dimming (Darkness)</span>
-                        <span id="aodDarknessVal" style="color: var(--accent); font-weight: 700;">${Math.round(darkness * 100)}%</span>
+                        <span id="aodDarknessVal" style="color: var(--accent-text); font-weight: 700;">${Math.round(darkness * 100)}%</span>
                     </div>
                     <input type="range" min="20" max="90" value="${Math.round(darkness * 100)}" class="sheet-volume-slider" oninput="window.setAodSlider('aod_darkness', this.value / 100, 'aodDarknessVal', '%')">
                 </div>
@@ -7270,7 +8398,7 @@ async function renderSettingsAOD() {
                 <div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
                         <span style="font-size: 14px; font-weight: 600;">Spotlight Glow Intensity</span>
-                        <span id="aodSpotlightVal" style="color: var(--accent); font-weight: 700;">${Math.round(spotlightIntensity * 100)}%</span>
+                        <span id="aodSpotlightVal" style="color: var(--accent-text); font-weight: 700;">${Math.round(spotlightIntensity * 100)}%</span>
                     </div>
                     <input type="range" min="30" max="100" value="${Math.round(spotlightIntensity * 100)}" class="sheet-volume-slider" oninput="window.setAodSlider('aod_spotlight_intensity', this.value / 100, 'aodSpotlightVal', '%')">
                 </div>
@@ -7851,7 +8979,7 @@ window.renderDeveloperNews = async function() {
     const heroCardHtml = `
         <div class="dev-news-hero-card">
             <div class="dev-news-hero-icon-wrap">
-                <i class="fas fa-newspaper" style="font-size: 24px; color: var(--accent);"></i>
+                <i class="fas fa-newspaper" style="font-size: 24px; color: var(--accent-text);"></i>
             </div>
             <div>
                 <div class="dev-news-hero-title">New Announcements</div>
@@ -7877,7 +9005,7 @@ window.renderDeveloperNews = async function() {
         contentHtml = `
             <div style="text-align: center; padding: 70px 20px;">
                 <div class="dev-news-hero-icon-wrap" style="width: 80px; height: 80px; margin: 0 auto 18px; background: rgba(29, 185, 84, 0.15);">
-                    <i class="fas fa-newspaper" style="font-size: 34px; color: var(--accent);"></i>
+                    <i class="fas fa-newspaper" style="font-size: 34px; color: var(--accent-text);"></i>
                 </div>
                 <div style="font-size: 18px; font-weight: 800; color: #fff; margin-bottom: 8px;">${title}</div>
                 <div style="font-size: 14px; color: var(--text-secondary); max-width: 420px; margin: 0 auto; line-height: 1.5;">${desc}</div>
@@ -7959,7 +9087,7 @@ window.openDeveloperNewsDetail = function(newsId) {
 
     const externalBtn = item.actionUrl ? `
         <button class="dev-news-icon-btn" onclick="window.open('${item.actionUrl}', '_blank')" title="Open Link">
-            <i class="fas fa-external-link-alt" style="color: var(--accent);"></i>
+            <i class="fas fa-external-link-alt" style="color: var(--accent-text);"></i>
         </button>
     ` : '<div style="width: 36px;"></div>';
 

@@ -12,6 +12,7 @@ const playIcon = playBtn.querySelector('i');
 let hideTimeout;
 let isExpanded = false;
 let isPlaying = false;
+let currentState = 'hidden';
 
 function formatTime(seconds) {
     if (!seconds || isNaN(seconds)) return '0:00';
@@ -21,7 +22,9 @@ function formatTime(seconds) {
 }
 
 function applyState(name) {
+    currentState = name;
     container.className = 'island ' + name;
+    if (typeof applyStateClasses === 'function') applyStateClasses();
     if (window.electronAPI.setIslandState) window.electronAPI.setIslandState(name);
 }
 
@@ -157,3 +160,30 @@ window.electronAPI.onTrackUpdated((data) => {
     // Auto-expand on new track
     window.electronAPI.expandIsland();
 });
+
+var islandOpts;
+
+function applyStateClasses() {
+    const o = islandOpts || {};
+    const sizes = ['small', 'medium', 'large'];
+    const positions = ['left', 'center', 'right'];
+    const bgs = ['black', 'dark', 'accent', 'glass'];
+    sizes.forEach((s) => container.classList.toggle('size-' + s, (o.size || 'medium') === s));
+    positions.forEach((p) => container.classList.toggle('pos-' + p, (o.position || 'center') === p));
+    bgs.forEach((b) => container.classList.toggle('bg-' + b, (o.bg || 'black') === b));
+    if (o.accent) document.documentElement.style.setProperty('--island-accent', o.accent);
+    // Size/position changed -> tell main to re-hug the window around the pill.
+    if (window.electronAPI && window.electronAPI.setIslandState) window.electronAPI.setIslandState(currentState);
+}
+
+function applyIslandOptions(opts) {
+    islandOpts = Object.assign({}, islandOpts, opts || {});
+    applyStateClasses();
+}
+
+if (window.electronAPI && window.electronAPI.onIslandOptions) {
+    window.electronAPI.onIslandOptions(applyIslandOptions);
+}
+if (window.electronAPI && window.electronAPI.getIslandOptions) {
+    window.electronAPI.getIslandOptions().then((opts) => applyIslandOptions(opts || {})).catch(() => { });
+}

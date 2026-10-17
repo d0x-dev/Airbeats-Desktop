@@ -48,6 +48,11 @@ def mobile():
     return render_template('mobile.html')
 
 
+@app.route('/health')
+def health():
+    return jsonify({"ok": True, "service": "airbeats-server"})
+
+
 @app.route('/robots.txt')
 def robots():
     return '''User-agent: *
@@ -557,7 +562,7 @@ def get_lyrics():
     video_id = request.args.get('vid') or request.args.get('song_id') or ''
     album = request.args.get('album', '')
     provider = request.args.get('provider')
-    preferred = request.args.get('preferred')
+    preferred = request.args.get('preferred') or (backend.setting('lyrics_preferred') or None)
     format_type = request.args.get('format', '')
 
     yt_inst = getattr(backend, 'yt', None)
@@ -582,7 +587,8 @@ def get_lyrics():
         return jsonify({"error": f"Lyrics not found on provider '{provider}'."}), 404
 
     res = lyrics_engine.get_lyrics_unified(
-        song_name, artist_name, duration, video_id, album, preferred, yt_inst
+        song_name, artist_name, duration, video_id, album, preferred, yt_inst,
+        disabled=backend.setting('lyrics_disabled')
     )
     if res.get('success'):
         if format_type == 'array':
@@ -593,6 +599,7 @@ def get_lyrics():
 
 import backend
 backend.add_yt_routes(app, get_lyrics)
+backend.install_error_hooks(app)
 
 @app.route('/api/lyrics/providers')
 def api_lyrics_providers():
@@ -622,7 +629,8 @@ def api_lyrics_search():
     yt_inst = getattr(backend, 'yt', None)
 
     results = lyrics_engine.search_lyrics_all_providers(
-        song_name, artist_name, duration, video_id, album, yt_inst
+        song_name, artist_name, duration, video_id, album, yt_inst,
+        disabled=backend.setting('lyrics_disabled')
     )
     return jsonify({"success": True, "results": results})
 

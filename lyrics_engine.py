@@ -636,9 +636,10 @@ def fetch_from_provider(provider_key, title, artist, duration=0, video_id=None, 
         return fetch_youtube_music(video_id, title, artist, ytmusic_instance)
     return None, False
 
-def get_lyrics_unified(title, artist, duration=0, video_id=None, album=None, preferred_provider=None, ytmusic_instance=None):
+def get_lyrics_unified(title, artist, duration=0, video_id=None, album=None, preferred_provider=None, ytmusic_instance=None, disabled=None):
     """
-    Tries providers starting with preferred_provider, followed by the remaining 10 providers in Android default priority order.
+    Tries providers starting with preferred_provider, followed by the remaining providers in recommended priority order.
+    Providers listed in the disabled list are skipped entirely.
     """
     default_order = [
         "lrclib",
@@ -654,7 +655,9 @@ def get_lyrics_unified(title, artist, duration=0, video_id=None, album=None, pre
         "youtube_music"
     ]
 
-    order = default_order.copy()
+    blocked = {str(k).lower() for k in (disabled or []) if k}
+
+    order = [k for k in default_order if k not in blocked]
     if preferred_provider and preferred_provider.lower() in order:
         order.remove(preferred_provider.lower())
         order.insert(0, preferred_provider.lower())
@@ -685,29 +688,33 @@ def get_lyrics_unified(title, artist, duration=0, video_id=None, album=None, pre
                     }
 
     # Final fallback: search LrcLib with title only
-    raw_lyrics, is_synced = fetch_lrclib(title, "", duration)
-    if raw_lyrics:
-        parsed = parse_any_lyrics(raw_lyrics, duration)
-        if parsed:
-            return {
-                "success": True,
-                "provider": "LRC Lib",
-                "provider_key": "lrclib",
-                "is_synced": is_synced,
-                "raw": raw_lyrics,
-                "parsed": parsed
-            }
+    if "lrclib" not in blocked:
+        raw_lyrics, is_synced = fetch_lrclib(title, "", duration)
+        if raw_lyrics:
+            parsed = parse_any_lyrics(raw_lyrics, duration)
+            if parsed:
+                return {
+                    "success": True,
+                    "provider": "LRC Lib",
+                    "provider_key": "lrclib",
+                    "is_synced": is_synced,
+                    "raw": raw_lyrics,
+                    "parsed": parsed
+                }
 
     return {"success": False, "error": "No synchronized lyrics found."}
 
-def search_lyrics_all_providers(title, artist, duration=0, video_id=None, album=None, ytmusic_instance=None):
+def search_lyrics_all_providers(title, artist, duration=0, video_id=None, album=None, ytmusic_instance=None, disabled=None):
     """
     Searches across all 11 providers and returns all found results for manual preview and selection.
     """
     results = []
     seen_texts = set()
+    blocked = {str(k).lower() for k in (disabled or []) if k}
 
     for prov_key in PROVIDER_KEYS:
+        if prov_key in blocked:
+            continue
         try:
             raw_lyrics, is_synced = fetch_from_provider(
                 prov_key, title, artist, duration, video_id, album, ytmusic_instance

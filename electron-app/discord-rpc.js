@@ -3,10 +3,13 @@ const GATEWAY = 'wss://gateway.discord.gg/?v=10&encoding=json';
 const APPLICATION_ID = (process.env.DISCORD_APPLICATION_ID || '').trim();
 const SEND_GAP_MS = 700;
 const API = 'https://discord.com/api/v9';
+const STATUSES = ['online', 'idle', 'dnd', 'invisible'];
+const normStatus = (s) => (STATUSES.indexOf(String(s)) >= 0 ? String(s) : 'online');
 
 class DiscordRpc {
-  constructor(applicationId) {
+  constructor(applicationId, status) {
     this.applicationId = (applicationId || APPLICATION_ID || '').trim();
+    this.status = normStatus(status);
     this.ws = null;
     this.token = null;
     this.seq = null;
@@ -209,6 +212,7 @@ class DiscordRpc {
   }
 
   async setActivity(a) {
+    this._lastActivity = a && (a.details || a.state) ? a : null;
     this._pending = a;
     if (this._sending) { this._dirty = true; return true; }
     this._sending = true;
@@ -226,6 +230,46 @@ class DiscordRpc {
       this._sending = false;
     }
     return ok;
+  }
+
+  async fetchStatus() {
+    if (!this.token) return null;
+    try {
+      const r = await fetch(API + '/users/@me/settings', {
+        headers: { Authorization: this.token, 'User-Agent': 'Mozilla/5.0' },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!r.ok) return null;
+      const j = await r.json();
+      return STATUSES.indexOf(j && j.status) >= 0 ? j.status : null;
+    } catch (e) { return null; }
+  }
+
+  async pushStatus() {
+    if (!this.token) return false;
+    try {
+      const r = await fetch(API + '/users/@me/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: this.token, 'User-Agent': 'Mozilla/5.0' },
+        body: JSON.stringify({ status: this.status }),
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!r.ok) this.log('status PATCH HTTP ' + r.status);
+      return r.ok;
+    } catch (e) {
+      this.log('status PATCH failed: ' + e.message);
+      return false;
+    }
+  }
+
+  async setStatus(s) {
+    this.status = normStatus(s);
+    const ok = await this.pushStatus();
+    if (this.connected) {
+      if (this._lastActivity) this.setActivity(this._lastActivity);
+      else this.clearActivity();
+    }
+    return { status: this.status, ok };
   }
 
   async _sendActivity(a) {
@@ -262,10 +306,16 @@ class DiscordRpc {
         .catch(() => {});
     }
 
+    const buttons = (Array.isArray(a.buttons) ? a.buttons : [])
+      .filter((b) => b && b.label && /^https?:\/\//.test(String(b.url)))
+      .slice(0, 2);
+
     const activity = {
       name: 'AirBeats',
       type: 2,
       ...(this.applicationId ? { application_id: this.applicationId } : {}),
+      ...(a.statusDisplayType ? { status_display_type: a.statusDisplayType } : {}),
+      ...(a.detailsUrl ? { details_url: String(a.detailsUrl) } : {}),
       state: a.state || null,
       details: a.details || null,
       timestamps: (a.startTimestamp || a.endTimestamp)
@@ -282,12 +332,18 @@ class DiscordRpc {
             small_text: a.smallText || undefined,
           }
         : undefined,
+      ...(buttons.length
+        ? {
+            buttons: buttons.map((b) => String(b.label).slice(0, 32)),
+            metadata: { button_urls: buttons.map((b) => String(b.url)) },
+          }
+        : {}),
     };
 
     const payload = {
       since: null,
       activities: [activity],
-      status: a.paused ? 'idle' : 'online',
+      status: this.status,
       afk: false,
     };
     this.log('SEND presence: ' + JSON.stringify(payload).slice(0, 1500));
@@ -298,7 +354,7 @@ class DiscordRpc {
     if (!this.token) return false;
     if (!this.connected) return false;
     this.log('SEND clear presence (activities: [])');
-    return this._send(3, { since: null, activities: [], status: 'online', afk: false });
+    return this._send(3, { since: null, activities: [], status: this.status, afk: false });
   }
 
   disconnect() {

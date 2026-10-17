@@ -69,7 +69,15 @@ function dAppId() {
     } catch (err) { }
     return (process.env.DISCORD_APPLICATION_ID || '').trim();
 }
-const dRpc = new DiscordRpc(dAppId());
+function dStatus() {
+    try {
+        const f = dLogPath.join(app.getPath('userData'), 'discord.json');
+        const j = JSON.parse(dFs.readFileSync(f, 'utf8'));
+        if (j.status) return String(j.status).trim();
+    } catch (err) { }
+    return 'online';
+}
+const dRpc = new DiscordRpc(dAppId(), dStatus());
 let dToken = null;
 let dUserInfo = null;
 let dLoginWin = null;
@@ -107,6 +115,12 @@ function dNotifyMain(payload) {
     }
 }
 
+async function dSyncLiveStatus() {
+    const live = await dRpc.fetchStatus();
+    if (live) dRpc.status = live;
+    return dRpc.status;
+}
+
 async function dUseToken(token) {
     dToken = token;
     dSaveToken(token);
@@ -114,6 +128,7 @@ async function dUseToken(token) {
         const info = await dRpc.getUserInfo(token);
         dUserInfo = info;
         dRpc.connect(token);
+        await dSyncLiveStatus();
         dNotifyMain({ ok: true, user: info, tokenSaved: true });
         return info;
     } catch (e) {
@@ -124,6 +139,14 @@ async function dUseToken(token) {
     }
 }
 
+async function dClearDiscordSession() {
+    try {
+        const s = require('electron').session.fromPartition('persist:discord');
+        await s.clearStorageData({ origins: ['https://discord.com'] });
+        await s.clearCache();
+        return true;
+    } catch (err) { return false; }
+}
 function dCreateLoginWindow() {
     if (dLoginWin && !dLoginWin.isDestroyed()) { dLoginWin.focus(); return; }
     dLoginWin = new dWin({
@@ -136,7 +159,6 @@ function dCreateLoginWindow() {
         }
     });
     dLoginWin.on('closed', () => { dLoginWin = null; clearInterval(dPoll); dPoll = null; });
-    dLoginWin.loadURL('https://discord.com/login');
 
     let tried = false;
     const attempt = async () => {
@@ -176,6 +198,10 @@ function dCreateLoginWindow() {
             }
         } catch (e) { }
     }, 1000);
+
+    dClearDiscordSession().then(() => {
+        if (dLoginWin && !dLoginWin.isDestroyed()) dLoginWin.loadURL('https://discord.com/login');
+    });
 }
 
 const D_DUMP = `(async function(){
@@ -241,10 +267,11 @@ dIpc.on('discord-login-dump', async () => {
 
 dIpc.handle('discord-get-state', async () => {
     console.log('[discord] getState asked, token=' + !!dToken);
-    if (!dToken) return { ok: false };
+    if (!dToken) return { ok: false, status: dRpc.status };
     try {
         if (!dUserInfo) dUserInfo = await dRpc.getUserInfo(dToken);
-        return { ok: true, user: dUserInfo };
+        await dSyncLiveStatus();
+        return { ok: true, user: dUserInfo, status: dRpc.status };
     } catch (e) {
         dToken = null;
         dRpc.disconnect();
@@ -285,15 +312,110 @@ dIpc.handle('discord-logout', async () => {
     dRpc.clearActivity();
     dRpc.disconnect();
     dToken = null;
-    try { dFs.unlinkSync(dStoreFile()); } catch (err) { }
+    dUserInfo = null;
+    try {
+        let cur = {};
+        try { cur = JSON.parse(dFs.readFileSync(dStoreFile(), 'utf8')); } catch (err) { }
+        delete cur.token;
+        dFs.writeFileSync(dStoreFile(), JSON.stringify(cur), 'utf8');
+    } catch (err) { }
+    if (dLoginWin && !dLoginWin.isDestroyed()) { dLoginWin.close(); dLoginWin = null; }
+    clearInterval(dPoll); dPoll = null;
+    await dClearDiscordSession();
     dNotifyMain({ ok: false, loggedOut: true });
     return true;
 });
-dIpc.on('island-state', (e, state) => {
+dIpc.handle('discord-set-status', async (e, s) => {
+    const r = await dRpc.setStatus(s);
+    try {
+        let cur = {};
+        try { cur = JSON.parse(dFs.readFileSync(dStoreFile(), 'utf8')); } catch (err) { }
+        dFs.writeFileSync(dStoreFile(), JSON.stringify({ ...cur, status: r.status }), 'utf8');
+    } catch (err) { }
+    return r;
+});
+// The island window is resized to the pill's real box on every state change
+// (+ small pads for margin/shadow), so transparent margins never swallow
+// clicks meant for elements around the island.
+let a0LastIslandState = null;
+function a0IslandDims(state) {
+    const opts = a0IslandReadOpts() || {};
+    const table = {
+        small: { min: [122, 32], exp: [330, 160] },
+        medium: { min: [140, 36], exp: [380, 180] },
+        large: { min: [168, 44], exp: [430, 200] }
+    };
+    const t = table[opts.size] || table.medium;
+    return state === 'expanded' ? t.exp : t.min;
+}
+function a0IslandHug(state) {
     if (!dynamicIslandWindow || dynamicIslandWindow.isDestroyed()) return;
     try {
-        dynamicIslandWindow.setIgnoreMouseEvents(state === 'hidden');
+        const { screen } = require('electron');
+        const b = screen.getPrimaryDisplay().bounds;
+        const opts = a0IslandReadOpts() || {};
+        const pos = opts.position || 'center';
+        const dims = a0IslandDims(state);
+        const PAD_X = 14, PAD_TOP = 10, PAD_BOTTOM = 24;
+        const w = dims[0] + PAD_X * 2;
+        const h = PAD_TOP + dims[1] + PAD_BOTTOM;
+        let x;
+        if (pos === 'left') x = b.x;
+        else if (pos === 'right') x = b.x + b.width - w;
+        else x = b.x + Math.round((b.width - w) / 2);
+        dynamicIslandWindow.setBounds({ x, y: b.y + PAD_TOP, width: w, height: h });
     } catch (err) { }
+}
+function a0IslandApplyState(state) {
+    if (!dynamicIslandWindow || dynamicIslandWindow.isDestroyed()) return;
+    try { dynamicIslandWindow.setIgnoreMouseEvents(state === 'hidden', { forward: true }); } catch (err) { }
+    if (state === 'expanded') {
+        a0IslandHug('expanded');
+    } else if (state === 'minimized' && a0LastIslandState === 'expanded') {
+        // Shrink animation: keep the big window until the pill has animated
+        // down, then hug the smaller box.
+        a0IslandHug('expanded');
+        setTimeout(() => {
+            try {
+                if (dynamicIslandWindow && !dynamicIslandWindow.isDestroyed() && a0LastIslandState === 'minimized') a0IslandHug('minimized');
+            } catch (err) { }
+        }, 430);
+    } else {
+        a0IslandHug('minimized');
+    }
+    a0LastIslandState = state;
+}
+dIpc.on('island-state', (e, state) => {
+    a0IslandApplyState(String(state || 'hidden'));
+});
+
+// Dynamic Island appearance options, persisted in userData/island-options.json
+// and pushed to the island window.
+const a0IslandOptsFile = dLogPath.join(require('electron').app.getPath('userData'), 'island-options.json');
+function a0IslandReadOpts() {
+    try { return JSON.parse(dFs.readFileSync(a0IslandOptsFile, 'utf8')); } catch (e) { return null; }
+}
+function a0IslandSendOpts() {
+    if (!dynamicIslandWindow || dynamicIslandWindow.isDestroyed()) return;
+    try { dynamicIslandWindow.webContents.send('island-options', a0IslandReadOpts() || {}); } catch (e) { }
+}
+dIpc.on('island-set-options', (e, opts) => {
+    try { dFs.writeFileSync(a0IslandOptsFile, JSON.stringify(opts || {}), 'utf8'); } catch (err) { }
+    a0IslandSendOpts();
+});
+dIpc.handle('island-get-options', () => a0IslandReadOpts() || {});
+app.on('browser-window-created', (e, win) => {
+    win.webContents.on('did-finish-load', () => {
+        try {
+            if (win.webContents.getURL().indexOf('dynamic-island') !== -1) {
+                a0IslandSendOpts();
+                // Start click-through + hugged so the island never blocks
+                // clicks before its first state message arrives.
+                try { win.setIgnoreMouseEvents(true, { forward: true }); } catch (err) { }
+                a0IslandHug('minimized');
+            }
+        } catch (err) { }
+    });
 });
 
 dIpc.on('discord-activity', (e, data) => {
@@ -309,7 +431,7 @@ try {
     if (saved) {
         dToken = saved;
         dRpc.getUserInfo(saved)
-            .then((info) => { dRpc.connect(saved); dNotifyMain({ ok: true, user: info, tokenSaved: true }); })
+            .then(async (info) => { dRpc.connect(saved); await dSyncLiveStatus(); dNotifyMain({ ok: true, user: info, tokenSaved: true }); })
             .catch((err) => { console.log('[discord] resume failed', err.message); dToken = null; });
     }
 } catch (e) { }
@@ -433,3 +555,88 @@ dIpc.handle('discord-login-callback', async (e, code) => {
 });
 
 
+
+const { ipcMain: ytIpc, BrowserWindow: ytWin } = require('electron');
+
+const YT_LOGIN_URL = 'https://accounts.google.com/ServiceLogin?continue=https%3A%2F%2Fmusic.youtube.com';
+const YT_LOGIN_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+
+function ytPostLogin(cookie, visitorData) {
+    return new Promise((resolve) => {
+        const body = JSON.stringify({ input: cookie, visitorData: visitorData || '' });
+        const target = new URL(a0_0xServerUrl() + '/api/yt/login');
+        const req = http.request({
+            hostname: target.hostname,
+            port: target.port,
+            path: target.pathname,
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+        }, (res) => {
+            let text = '';
+            res.on('data', (chunk) => { text += chunk; });
+            res.on('end', () => {
+                try { resolve(JSON.parse(text)); } catch (err) { resolve({ success: false, error: 'invalid response' }); }
+            });
+        });
+        req.on('error', (err) => resolve({ success: false, error: err.message }));
+        req.write(body);
+        req.end();
+    });
+}
+
+function ytReadCookies(sess) {
+    return sess.cookies.get({ domain: 'youtube.com' }).then((cookies) => {
+        const jar = {};
+        cookies.forEach((c) => { if (c.name && c.value && jar[c.name] === undefined) jar[c.name] = c.value; });
+        if (!jar.SAPISID) return null;
+        return Object.keys(jar).map((k) => k + '=' + jar[k]).join('; ');
+    }).catch(() => null);
+}
+
+ytIpc.handle('yt-open-login', () => new Promise((resolve) => {
+    const win = new ytWin({
+        width: 1000,
+        height: 780,
+        title: 'Sign in to YouTube Music',
+        autoHideMenuBar: true,
+        webPreferences: {
+            partition: 'yt-login',
+            nodeIntegration: false,
+            contextIsolation: true,
+            devTools: false
+        }
+    });
+    win.setMenuBarVisibility(false);
+    win.webContents.setUserAgent(YT_LOGIN_UA);
+    let done = false;
+    let activeCookie = null;
+    let lastTryAt = 0;
+    let inFlight = false;
+    const finish = (result) => {
+        if (done) return;
+        done = true;
+        clearInterval(poll);
+        if (!win.isDestroyed()) win.close();
+        resolve(result);
+    };
+    const poll = setInterval(async () => {
+        if (done || inFlight || win.isDestroyed()) return;
+        const cookie = await ytReadCookies(win.webContents.session);
+        if (!cookie) return;
+        if (cookie === activeCookie && Date.now() - lastTryAt < 15000) return;
+        activeCookie = cookie;
+        lastTryAt = Date.now();
+        inFlight = true;
+        try {
+            const visitorData = await win.webContents.executeJavaScript(
+                "(function(){try{var c=window.ytcfg;var y=window.yt&&window.yt.config_;var v=c&&c.get&&c.get('VISITOR_DATA')||y&&y.VISITOR_DATA;return v||null}catch(e){return null}})()"
+            ).catch(() => null);
+            const result = await ytPostLogin(cookie, visitorData);
+            if (result && result.success) finish({ ok: true, account: result.data });
+        } finally {
+            inFlight = false;
+        }
+    }, 2000);
+    win.on('closed', () => finish({ ok: false }));
+    win.loadURL(YT_LOGIN_URL);
+}));
