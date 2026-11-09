@@ -11,6 +11,7 @@ dCB.exposeInMainWorld('discordAPI', {
     _onLoginOpened: (cb) => dIpcR.on('discord-login-opened', (_e, d) => cb(d)),
     _onCallback: (code) => dIpcR.invoke('discord-login-callback', code),
     setToken: (t) => dIpcR.invoke('discord-token-paste', t),
+    setStatus: (s) => dIpcR.invoke('discord-set-status', s),
     logout: () => dIpcR.invoke('discord-logout'),
     setActivity: (d) => dIpcR.send('discord-activity', d),
     onStatus: (cb) => dIpcR.on('discord-status', (_e, data) => cb(data)),
@@ -19,3 +20,12 @@ dCB.exposeInMainWorld('discordAPI', {
     rlog: (m) => dIpcR.send('discord-log', String(m)),
 });
 dIpcR.on('discord-dump-request', () => {});
+
+const { ipcRenderer: ytIpcR, contextBridge: ytCB } = require('electron');
+ytCB.exposeInMainWorld('ytmusicAPI', {
+    openLogin: () => ytIpcR.invoke('yt-open-login')
+});
+ytCB.exposeInMainWorld('islandAPI', {
+    setOptions: (opts) => ytIpcR.send('island-set-options', opts || {}),
+    getOptions: () => ytIpcR.invoke('island-get-options')
+});

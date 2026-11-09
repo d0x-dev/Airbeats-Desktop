@@ -500,7 +500,7 @@ window.renderListenTogetherModalContent = function() {
 
             <!-- Participants Card -->
             <div class="lt-glass-card" style="margin-bottom: 16px;">
-                <div style="font-size: 12px; font-weight: 800; color: var(--accent); margin-bottom: 10px; letter-spacing: 0.5px;">
+                <div style="font-size: 12px; font-weight: 800; color: var(--accent-text); margin-bottom: 10px; letter-spacing: 0.5px;">
                     SESSION USERS (${participants.length})
                 </div>
                 <div style="max-height: 150px; overflow-y: auto;">
@@ -523,7 +523,7 @@ window.renderListenTogetherModalContent = function() {
 
             <!-- Title & Description -->
             <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
-                <div style="width: 36px; height: 36px; border-radius: 50%; background: rgba(29, 185, 84, 0.15); display: flex; align-items: center; justify-content: center; color: var(--accent); font-size: 16px;">
+                <div style="width: 36px; height: 36px; border-radius: 50%; background: rgba(29, 185, 84, 0.15); display: flex; align-items: center; justify-content: center; color: var(--accent-text); font-size: 16px;">
                     <i class="fas fa-users"></i>
                 </div>
                 <h2 style="margin: 0; font-size: 20px; font-weight: 800; color: #fff;">Listen Together</h2>

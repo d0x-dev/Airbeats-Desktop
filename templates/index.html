@@ -180,6 +180,9 @@
 </head>
 <body>
 
+    <!-- Dynamic background layer (Appearance -> Dynamic Background) -->
+    <div id="airDynamicBg" class="air-dynamic-bg" aria-hidden="true"></div>
+
     <!-- ONBOARDING OVERLAY -->
     <style id="onboarding-styles">
         @keyframes fadeUp {
@@ -432,12 +435,12 @@
                 </div>
                 <div class="nav-section">Settings</div>
                 <ul class="nav-links">
-                    <li><a href="#settings/backup" class="nav-item" id="nav-settings-backup"><i class="fas fa-database"></i> <span>Backup & Restore</span></a></li>
-                    <li><a href="#settings/appearance" class="nav-item" id="nav-settings-appearance"><i class="fas fa-palette"></i> <span>Appearance</span></a></li>
-                    <li><a href="#settings/aod" class="nav-item" id="nav-settings-aod"><i class="fas fa-moon"></i> <span>Always On Display</span></a></li>
-                    <li><a href="#settings/developer-news" class="nav-item" id="nav-settings-developer-news"><i class="fas fa-newspaper"></i> <span>News from Developers</span></a></li>
-                    <li><a href="#settings/about" class="nav-item" id="nav-settings-about"><i class="fas fa-info-circle"></i> <span>About</span></a></li>
-                    <li><a href="#settings/updates" class="nav-item" id="nav-settings-updates"><i class="fas fa-sync-alt"></i> <span>Updates</span></a></li>
+                    <li><a href="#settings/backup" class="nav-item" id="nav-settings-backup"><i class="fas fa-database"></i> <span data-i18n="backup">Backup & Restore</span></a></li>
+                    <li><a href="#settings/appearance" class="nav-item" id="nav-settings-appearance"><i class="fas fa-palette"></i> <span data-i18n="appearance">Appearance</span></a></li>
+                    <li><a href="#settings/aod" class="nav-item" id="nav-settings-aod"><i class="fas fa-moon"></i> <span data-i18n="aod">Always On Display</span></a></li>
+                    <li><a href="#settings/developer-news" class="nav-item" id="nav-settings-developer-news"><i class="fas fa-newspaper"></i> <span data-i18n="news">News from Developers</span></a></li>
+                    <li><a href="#settings/about" class="nav-item" id="nav-settings-about"><i class="fas fa-info-circle"></i> <span data-i18n="about">About</span></a></li>
+                    <li><a href="#settings/updates" class="nav-item" id="nav-settings-updates"><i class="fas fa-sync-alt"></i> <span data-i18n="updates">Updates</span></a></li>
                 </ul>
             </div>
         </nav>
@@ -451,6 +454,9 @@
                 <div class="search-box" style="position: relative;">
                     <i class="fas fa-search search-icon"></i>
                     <input type="text" id="globalSearch" placeholder="Search..." autocomplete="off">
+                    <button type="button" id="searchClearBtn" class="search-clear-btn" onclick="window.clearGlobalSearch()" title="Clear search" aria-label="Clear search" tabindex="-1">
+                        <i class="fas fa-times"></i>
+                    </button>
                     <div id="searchSuggestions" class="search-suggestions" style="display:none;"></div>
                 </div>
 
@@ -468,7 +474,7 @@
                     </a>
                     <a href="#stats" style="color: inherit; text-decoration: none; margin-right: 15px;" title="Stats & Insights"><i class="fas fa-chart-pie"></i></a>
                     <a href="#settings/backup" style="color: inherit; text-decoration: none; margin-right: 15px;" title="Backup & Restore"><i class="fas fa-hdd"></i></a>
-                    <a href="#settings/appearance" style="color: inherit; text-decoration: none;" title="Settings"><i class="fas fa-cog"></i></a>
+                    <a href="#settings/account" style="color: inherit; text-decoration: none;" title="Settings"><i class="fas fa-cog"></i></a>
                 </div>
             </header>
 
@@ -607,6 +613,13 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
     <script src="{{ url_for('static', filename='script.js') }}?v={{ range(1, 999999) | random }}"></script>
     <script src="{{ url_for('static', filename='listen-together.js') }}?v={{ range(1, 999999) | random }}"></script>
+    <script src="{{ url_for('static', filename='air-locales.js') }}?v={{ range(1, 999999) | random }}"></script>
+    <script src="{{ url_for('static', filename='features/core.js') }}?v={{ range(1, 999999) | random }}"></script>
+    <script src="{{ url_for('static', filename='features/appearance.js') }}?v={{ range(1, 999999) | random }}"></script>
+    <script src="{{ url_for('static', filename='features/settings-content.js') }}?v={{ range(1, 999999) | random }}"></script>
+    <script src="{{ url_for('static', filename='features/settings-logs.js') }}?v={{ range(1, 999999) | random }}"></script>
+    <script src="{{ url_for('static', filename='features/account.js') }}?v={{ range(1, 999999) | random }}"></script>
+    <script src="{{ url_for('static', filename='features/playlists.js') }}?v={{ range(1, 999999) | random }}"></script>
 
     <!-- Lyrics Overlay -->
     <div id="lyricsOverlay" class="lyrics-overlay" style="display: none;">
@@ -634,7 +647,12 @@
             <div class="lyrics-right-panel">
                 <div class="lyrics-header">
                     <h2 id="lyricsTitle">Song Title</h2>
-                    <div style="display: flex; gap: 10px;">
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <div class="lyrics-sync-ctrl" title="Lyrics timing adjust — shift lyrics earlier or later if they drift">
+                            <button class="lyrics-sync-btn" onclick="window.airLyricsOffsetStep(-250)" title="Lyrics 0.25s earlier (if lyrics appear late)">−0.25s</button>
+                            <span id="lyricsSyncOffsetLabel" class="lyrics-sync-label" onclick="window.airLyricsOffsetReset()" title="Click to reset — back to 0">0s</span>
+                            <button class="lyrics-sync-btn" onclick="window.airLyricsOffsetStep(250)" title="Lyrics 0.25s later (if lyrics appear early)">+0.25s</button>
+                        </div>
                         <button class="lyrics-close-btn" id="lyricsRefreshBtn" onclick="window.forceRefreshLyrics()" title="Refresh Lyrics">
                             <i class="fas fa-sync-alt"></i>
                         </button>

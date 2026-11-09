@@ -18,4 +18,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   minimizeApp: () => ipcRenderer.send('window-minimize'),
   toggleFullscreen: () => ipcRenderer.send('window-toggle-fullscreen'),
   openExternal: (url) => ipcRenderer.send('open-external', url),
+  onIslandOptions: (cb) => ipcRenderer.on('island-options', (_e, opts) => cb(opts)),
+  getIslandOptions: () => ipcRenderer.invoke('island-get-options'),
 });
